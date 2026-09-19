@@ -13,21 +13,29 @@ import {
   View,
 } from "react-native";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
-import { ArrowUp, Paperclip, ShoppingBag, Sun, X } from "phosphor-react-native";
+import { ArrowsLeftRight, ArrowUp, Paperclip, Plus, ShoppingBag, Sun, X } from "phosphor-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, Item, OutfitResult } from "@/src/api";
 import { ItemThumb } from "@/src/components/item-thumb";
 import { OccasionSheet } from "@/src/components/occasion-sheet";
 import { usesNativeTabs } from "@/src/navigation";
+import { consumeStylistFocus, usePendingStylistFocus } from "@/src/stylist-focus";
 import { useToast } from "@/src/toast";
 import { useWeather } from "@/src/weather";
 import { fontSize, makeStyles, spacing, useTheme } from "@/src/theme";
 import { Button } from "@/src/ui";
 
-type Msg =
-  | { kind: "user"; text: string }
-  | { kind: "result"; result: OutfitResult; saved?: boolean; id: string };
+type ResultMsg = {
+  kind: "result";
+  result: OutfitResult;
+  saved?: boolean;
+  edited?: boolean;
+  id: string;
+  prompt: string;
+  focusId?: string | null;
+};
+type Msg = { kind: "user"; text: string; id: string } | ResultMsg;
 
 const QUICK_PROMPTS = [
   "Style an office visit outfit",
@@ -49,7 +57,9 @@ export default function Stylist() {
   const [input, setInput] = useState("");
   const [focus, setFocus] = useState<Item | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [tagging, setTagging] = useState<Extract<Msg, { kind: "result" }> | null>(null);
+  // Which look is being edited via the item picker: swap one piece (itemId) or add a piece (itemId null).
+  const [editTarget, setEditTarget] = useState<{ msgId: string; itemId: string | null } | null>(null);
+  const [tagging, setTagging] = useState<ResultMsg | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const { weather, loading: weatherLoading, enabled: weatherEnabled, enable: enableWeather, disable: disableWeather } = useWeather();
 
@@ -57,36 +67,106 @@ export default function Stylist() {
   const { data: outfits } = useQuery({ queryKey: ["outfits"], queryFn: () => api.outfits() });
   const customTags = Array.from(new Set((outfits || []).map((o) => o.occasion || "").filter(Boolean)));
 
+  const pendingFocusId = usePendingStylistFocus();
+  const focusId = pendingFocusId || params.focusId;
   useEffect(() => {
-    if (params.focusId && items) {
-      const it = items.find((i) => i.id === params.focusId);
-      if (it) setFocus(it);
+    if (focusId && items) {
+      const it = items.find((i) => i.id === focusId);
+      if (it) {
+        setFocus(it);
+        show(`Styling around ${it.name}`, "default");
+      }
+      if (pendingFocusId) consumeStylistFocus();
     }
-  }, [params.focusId, items]);
+  }, [focusId, pendingFocusId, items]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const generate = useMutation({
-    mutationFn: ({ prompt, focusId, weatherLabel }: { prompt: string; focusId?: string | null; weatherLabel?: string | null }) =>
-      api.stylist(prompt, focusId, weatherLabel),
-    onSuccess: (result) => {
-      setMessages((m) => [...m, { kind: "result", result, id: `${Date.now()}` }]);
+    mutationFn: ({
+      prompt,
+      focusId,
+      weatherLabel,
+      avoidIds,
+    }: {
+      prompt: string;
+      focusId?: string | null;
+      weatherLabel?: string | null;
+      avoidIds?: string[];
+    }) => api.stylist(prompt, focusId, weatherLabel, avoidIds),
+    onSuccess: (result, vars) => {
+      setMessages((m) => [...m, { kind: "result", result, id: `${Date.now()}`, prompt: vars.prompt, focusId: vars.focusId }]);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     },
     onError: (e: any) => show(e?.message || "Stylist unavailable", "error"),
   });
 
+  const pushUser = (text: string) => setMessages((m) => [...m, { kind: "user", text, id: `u${Date.now()}` }]);
+
   const send = (text: string) => {
     const prompt = text.trim();
     if (!prompt) return;
-    const label = focus ? `${prompt}  ·  [${focus.name}]` : prompt;
-    setMessages((m) => [...m, { kind: "user", text: label }]);
+    pushUser(focus ? `${prompt}  ·  [${focus.name}]` : prompt);
     setInput("");
     generate.mutate({ prompt, focusId: focus?.id, weatherLabel: weather?.label });
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   };
 
-  const retry = (prompt: string) => {
-    setMessages((m) => [...m, { kind: "user", text: prompt }]);
-    generate.mutate({ prompt, focusId: focus?.id, weatherLabel: weather?.label });
+  /** Re-run the SAME request as the given look, asking the stylist to avoid repeating its pieces. */
+  const tryAnother = (msg: ResultMsg) => {
+    if (generate.isPending) return;
+    pushUser("Try another look");
+    // Avoid every combination already shown for this prompt, not just the last one.
+    const seen = messages.filter((x): x is ResultMsg => x.kind === "result" && x.prompt === msg.prompt).flatMap((x) => x.result.item_ids);
+    generate.mutate({
+      prompt: msg.prompt,
+      focusId: msg.focusId,
+      weatherLabel: weather?.label,
+      avoidIds: Array.from(new Set([...seen, ...msg.result.item_ids])),
+    });
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+  };
+
+  const dismiss = (msgId: string) => {
+    setMessages((m) => {
+      const idx = m.findIndex((x) => x.id === msgId);
+      if (idx < 0) return m;
+      const prev = m[idx - 1];
+      // Drop the look and the request bubble that produced it.
+      const start = prev && prev.kind === "user" ? idx - 1 : idx;
+      return [...m.slice(0, start), ...m.slice(idx + 1)];
+    });
+  };
+
+  const clearChat = () => {
+    setMessages([]);
+    setFocus(null);
+  };
+
+  const updateLook = (msgId: string, mutate: (items: Item[]) => Item[]) => {
+    setMessages((m) =>
+      m.map((x) => {
+        if (x.kind !== "result" || x.id !== msgId) return x;
+        const nextItems = mutate(x.result.items);
+        return { ...x, saved: false, edited: true, result: { ...x.result, items: nextItems, item_ids: nextItems.map((i) => i.id) } };
+      }),
+    );
+  };
+
+  const removeFromLook = (msgId: string, itemId: string) => updateLook(msgId, (its) => its.filter((i) => i.id !== itemId));
+
+  const applyPick = (it: Item) => {
+    if (editTarget) {
+      const { msgId, itemId } = editTarget;
+      updateLook(msgId, (its) => {
+        if (its.some((i) => i.id === it.id)) return its;
+        if (itemId) return its.map((i) => (i.id === itemId ? it : i));
+        return [...its, it];
+      });
+      show(itemId ? `Swapped in ${it.name}` : `Added ${it.name}`, "success");
+      setEditTarget(null);
+    } else {
+      setFocus(it);
+    }
+    setPickerOpen(false);
   };
 
   const shop = (q: string) => {
@@ -105,7 +185,7 @@ export default function Stylist() {
     else show("Location permission needed for weather", "error");
   };
 
-  const saveOutfit = async (msg: Extract<Msg, { kind: "result" }>, occasion: string) => {
+  const saveOutfit = async (msg: ResultMsg, occasion: string) => {
     try {
       await api.saveOutfit({
         title: msg.result.outfit_name,
@@ -132,6 +212,20 @@ export default function Stylist() {
 
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
   const empty = messages.length === 0;
+
+  // Picker contents depend on what we're doing: when swapping, show same-category pieces first
+  // and hide pieces already in the look.
+  const pickerItems = (() => {
+    const all = items || [];
+    if (!editTarget) return all;
+    const target = messages.find((x): x is ResultMsg => x.kind === "result" && x.id === editTarget.msgId);
+    if (!target) return all;
+    const inLook = new Set(target.result.item_ids);
+    const swapping = editTarget.itemId ? target.result.items.find((i) => i.id === editTarget.itemId) : null;
+    const candidates = all.filter((i) => !inLook.has(i.id));
+    if (!swapping) return candidates;
+    return [...candidates.filter((i) => i.category === swapping.category), ...candidates.filter((i) => i.category !== swapping.category)];
+  })();
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -167,14 +261,39 @@ export default function Stylist() {
           </View>
         )}
 
-        {messages.map((m, idx) =>
+        {!empty && (
+          <Pressable style={styles.clearBtn} onPress={clearChat} testID="clear-chat-btn" hitSlop={6}>
+            <X color={colors.onSurface} size={12} weight="bold" />
+            <Text style={styles.clearText}>CLEAR CONVERSATION</Text>
+          </Pressable>
+        )}
+
+        {messages.map((m) =>
           m.kind === "user" ? (
-            <View key={idx} style={styles.userMsg}>
+            <View key={m.id} style={styles.userMsg}>
               <Text style={styles.userText}>{m.text}</Text>
             </View>
           ) : (
-            <ResultCard key={m.id} msg={m} onSave={() => setTagging(m)} onRetry={() => retry(QUICK_PROMPTS[0])} onAddMissing={() => router.push("/add-item")} onShop={shop} />
-          )
+            <ResultCard
+              key={m.id}
+              msg={m}
+              busy={generate.isPending}
+              onSave={() => setTagging(m)}
+              onRetry={() => tryAnother(m)}
+              onDismiss={() => dismiss(m.id)}
+              onSwap={(itemId) => {
+                setEditTarget({ msgId: m.id, itemId });
+                setPickerOpen(true);
+              }}
+              onRemove={(itemId) => removeFromLook(m.id, itemId)}
+              onAdd={() => {
+                setEditTarget({ msgId: m.id, itemId: null });
+                setPickerOpen(true);
+              }}
+              onAddMissing={() => router.push("/add-item")}
+              onShop={shop}
+            />
+          ),
         )}
 
         {generate.isPending && (
@@ -207,11 +326,13 @@ export default function Stylist() {
             <TextInput
               testID="stylist-input"
               style={styles.input}
-              placeholder="Ask your stylist..."
+              placeholder="Describe the look you want…"
               placeholderTextColor={colors.muted}
               value={input}
               onChangeText={setInput}
               multiline
+              blurOnSubmit
+              returnKeyType="send"
               onSubmitEditing={() => send(input)}
             />
             <Pressable
@@ -228,12 +349,13 @@ export default function Stylist() {
 
       <ItemPicker
         open={pickerOpen}
-        items={items || []}
-        onClose={() => setPickerOpen(false)}
-        onPick={(it) => {
-          setFocus(it);
+        title={editTarget ? (editTarget.itemId ? "SWAP THIS PIECE" : "ADD A PIECE") : "ATTACH AN ITEM"}
+        items={pickerItems}
+        onClose={() => {
           setPickerOpen(false);
+          setEditTarget(null);
         }}
+        onPick={applyPick}
       />
 
       <OccasionSheet
@@ -254,34 +376,65 @@ export default function Stylist() {
 
 function ResultCard({
   msg,
+  busy,
   onSave,
   onRetry,
+  onDismiss,
+  onSwap,
+  onRemove,
+  onAdd,
   onAddMissing,
   onShop,
 }: {
-  msg: Extract<Msg, { kind: "result" }>;
+  msg: ResultMsg;
+  busy: boolean;
   onSave: () => void;
   onRetry: () => void;
+  onDismiss: () => void;
+  onSwap: (itemId: string) => void;
+  onRemove: (itemId: string) => void;
+  onAdd: () => void;
   onAddMissing: () => void;
   onShop: (q: string) => void;
 }) {
   const styles = useStyles();
   const { colors } = useTheme();
   const r = msg.result;
+  const canRemove = r.items.length > 1;
   return (
     <View style={styles.resultCard} testID="outfit-result">
-      <Text style={styles.resultName}>{r.outfit_name.toUpperCase()}</Text>
+      <View style={styles.resultHead}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.resultName}>{r.outfit_name.toUpperCase()}</Text>
+          <Text style={styles.resultHint}>{msg.edited ? "EDITED · TAP A PIECE TO SWAP" : "TAP A PIECE TO SWAP IT"}</Text>
+        </View>
+        <Pressable onPress={onDismiss} style={styles.dismissBtn} testID="dismiss-result-btn" hitSlop={6}>
+          <X color={colors.onSurface} size={18} weight="bold" />
+        </Pressable>
+      </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.compositeRow}>
         {r.items.map((it) => (
           <View key={it.id} style={styles.compositeItem}>
-            <View style={styles.compositeThumb}>
+            <Pressable style={styles.compositeThumb} onPress={() => onSwap(it.id)} testID={`swap-${it.id}`}>
               <ItemThumb item={it} />
-            </View>
+              <View style={styles.swapBadge}>
+                <ArrowsLeftRight color={colors.onBrandPrimary} size={12} weight="bold" />
+              </View>
+            </Pressable>
+            {canRemove && (
+              <Pressable style={styles.removeBadge} onPress={() => onRemove(it.id)} testID={`remove-${it.id}`} hitSlop={6}>
+                <X color={colors.onBrandPrimary} size={12} weight="bold" />
+              </Pressable>
+            )}
             <Text numberOfLines={1} style={styles.compositeLabel}>
               {it.name}
             </Text>
           </View>
         ))}
+        <Pressable style={styles.addTile} onPress={onAdd} testID="add-piece-btn">
+          <Plus color={colors.onSurface} size={22} weight="bold" />
+          <Text style={styles.addTileText}>ADD PIECE</Text>
+        </Pressable>
       </ScrollView>
       {!!r.stylist_note && (
         <View style={styles.noteBox}>
@@ -303,7 +456,7 @@ function ResultCard({
           testID="save-outfit-btn"
           style={{ flex: 1 }}
         />
-        <Button title="Try Another" variant="outline" onPress={onRetry} testID="try-another-btn" style={{ flex: 1 }} />
+        <Button title="Try Another" variant="outline" onPress={onRetry} disabled={busy} testID="try-another-btn" style={{ flex: 1 }} />
       </View>
       <Pressable onPress={onAddMissing} style={styles.addMissing} testID="add-missing-btn">
         <Text style={styles.addMissingText}>ADD MISSING ITEM</Text>
@@ -314,11 +467,13 @@ function ResultCard({
 
 function ItemPicker({
   open,
+  title,
   items,
   onClose,
   onPick,
 }: {
   open: boolean;
+  title: string;
   items: Item[];
   onClose: () => void;
   onPick: (it: Item) => void;
@@ -331,27 +486,36 @@ function ItemPicker({
       <Pressable style={styles.sheetBackdrop} onPress={onClose} />
       <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.lg }]}>
         <View style={styles.sheetHeader}>
-          <Text style={styles.sheetTitle}>ATTACH AN ITEM</Text>
+          <Text style={styles.sheetTitle}>{title}</Text>
           <Pressable onPress={onClose} testID="picker-close" hitSlop={8}>
             <X color={colors.onSurface} size={22} weight="bold" />
           </Pressable>
         </View>
-        <FlatList
-          data={items}
-          keyExtractor={(i) => i.id}
-          numColumns={3}
-          contentContainerStyle={{ paddingBottom: spacing.lg }}
-          renderItem={({ item }) => (
-            <Pressable style={styles.pickerCell} onPress={() => onPick(item)} testID={`pick-${item.id}`}>
-              <View style={styles.pickerThumb}>
-                <ItemThumb item={item} />
-              </View>
-              <Text numberOfLines={1} style={styles.pickerLabel}>
-                {item.name}
-              </Text>
-            </Pressable>
-          )}
-        />
+        {items.length === 0 ? (
+          <Text style={styles.pickerEmpty} testID="picker-empty">
+            NO OTHER PIECES AVAILABLE — ADD MORE TO YOUR CLOSET
+          </Text>
+        ) : (
+          <FlatList
+            data={items}
+            keyExtractor={(i) => i.id}
+            numColumns={3}
+            contentContainerStyle={{ paddingBottom: spacing.lg }}
+            renderItem={({ item }) => (
+              <Pressable style={styles.pickerCell} onPress={() => onPick(item)} testID={`pick-${item.id}`}>
+                <View style={styles.pickerThumb}>
+                  <ItemThumb item={item} />
+                </View>
+                <Text numberOfLines={1} style={styles.pickerLabel}>
+                  {item.name}
+                </Text>
+                <Text numberOfLines={1} style={styles.pickerCat}>
+                  {item.category.toUpperCase()}
+                </Text>
+              </Pressable>
+            )}
+          />
+        )}
       </View>
     </Modal>
   );
@@ -365,6 +529,8 @@ const useStyles = makeStyles((c) => ({
   weatherChip: { flexDirection: "row", alignItems: "center", gap: spacing.xs, borderWidth: 1, borderColor: c.borderStrong, paddingHorizontal: spacing.md, height: 36 },
   weatherChipOn: { backgroundColor: c.brandPrimary, borderColor: c.brandPrimary },
   weatherText: { fontSize: 11, fontWeight: "800", letterSpacing: 1, color: c.onSurface },
+  clearBtn: { alignSelf: "flex-end", flexDirection: "row", alignItems: "center", gap: spacing.xs, height: 32, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: c.border, marginBottom: -spacing.sm },
+  clearText: { fontSize: 10, fontWeight: "800", letterSpacing: 1, color: c.onSurface },
   hairline: { height: 1, backgroundColor: c.borderStrong },
 
   promptsWrap: { gap: spacing.md, marginTop: spacing.xl },
@@ -379,10 +545,17 @@ const useStyles = makeStyles((c) => ({
   typingText: { color: c.muted, letterSpacing: 2, fontSize: fontSize.sm },
 
   resultCard: { borderWidth: 1, borderColor: c.borderStrong, backgroundColor: c.surface },
-  resultName: { fontSize: fontSize.lg, fontWeight: "900", letterSpacing: 1, color: c.onSurface, padding: spacing.lg, paddingBottom: spacing.md },
-  compositeRow: { gap: 1, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
-  compositeItem: { width: 120, gap: spacing.sm },
+  resultHead: { flexDirection: "row", alignItems: "flex-start", padding: spacing.lg, paddingBottom: spacing.md, gap: spacing.sm },
+  resultName: { fontSize: fontSize.lg, fontWeight: "900", letterSpacing: 1, color: c.onSurface },
+  resultHint: { fontSize: 9, letterSpacing: 1.5, color: c.muted, marginTop: 4, fontWeight: "700" },
+  dismissBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: c.border },
+  compositeRow: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
+  compositeItem: { width: 120, gap: spacing.sm, position: "relative" },
   compositeThumb: { width: 120, height: 140, backgroundColor: c.surfaceTertiary, borderWidth: 1, borderColor: c.border },
+  swapBadge: { position: "absolute", right: 6, bottom: 6, width: 22, height: 22, alignItems: "center", justifyContent: "center", backgroundColor: c.brandPrimary },
+  removeBadge: { position: "absolute", top: 6, right: 6, width: 24, height: 24, alignItems: "center", justifyContent: "center", backgroundColor: c.brandPrimary },
+  addTile: { width: 120, height: 140, alignItems: "center", justifyContent: "center", gap: spacing.xs, borderWidth: 1, borderColor: c.borderStrong, borderStyle: "dashed", backgroundColor: c.surfaceTertiary },
+  addTileText: { fontSize: 10, letterSpacing: 1.5, fontWeight: "800", color: c.onSurface },
   compositeLabel: { fontSize: fontSize.sm, color: c.onSurface, fontWeight: "600" },
   noteBox: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, gap: spacing.xs },
   noteLabel: { fontSize: fontSize.sm, letterSpacing: 2, color: c.muted },
@@ -410,4 +583,6 @@ const useStyles = makeStyles((c) => ({
   pickerCell: { flex: 1 / 3, padding: spacing.xs, gap: spacing.xs },
   pickerThumb: { aspectRatio: 1, backgroundColor: c.surfaceTertiary, borderWidth: 1, borderColor: c.border },
   pickerLabel: { fontSize: 11, color: c.onSurface },
+  pickerCat: { fontSize: 9, letterSpacing: 1, color: c.muted },
+  pickerEmpty: { paddingVertical: spacing.xl, textAlign: "center", fontSize: fontSize.sm, letterSpacing: 1, color: c.muted, fontWeight: "700" },
 }));

@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, Item } from "@/src/api";
 import { ItemThumb } from "@/src/components/item-thumb";
+import { requestStylistFocus } from "@/src/stylist-focus";
 import { useToast } from "@/src/toast";
 import { fontSize, makeStyles, spacing, useTheme } from "@/src/theme";
 import { Button } from "@/src/ui";
@@ -53,8 +54,10 @@ export default function ItemDetail() {
   };
 
   const styleAround = () => {
-    router.back();
-    setTimeout(() => router.push(`/(tabs)/stylist?focusId=${item?.id}`), 50);
+    if (!item) return;
+    requestStylistFocus(item.id);
+    // Pops this modal and switches to the Stylist tab in one navigation action.
+    router.dismissTo("/(tabs)/stylist");
   };
 
   const rows: [string, string][] = item

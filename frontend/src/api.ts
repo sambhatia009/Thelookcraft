@@ -120,10 +120,20 @@ export const api = {
     req(`/items/${id}`, { method: "PATCH", json: patch }),
   deleteItem: (id: string) => req(`/items/${id}`, { method: "DELETE" }),
 
-  stylist: (prompt: string, focus_item_id?: string | null, weather_context?: string | null): Promise<OutfitResult> =>
+  stylist: (
+    prompt: string,
+    focus_item_id?: string | null,
+    weather_context?: string | null,
+    avoid_item_ids?: string[] | null,
+  ): Promise<OutfitResult> =>
     req("/stylist/generate", {
       method: "POST",
-      json: { prompt, focus_item_id: focus_item_id || null, weather_context: weather_context || null },
+      json: {
+        prompt,
+        focus_item_id: focus_item_id || null,
+        weather_context: weather_context || null,
+        avoid_item_ids: avoid_item_ids && avoid_item_ids.length ? avoid_item_ids : null,
+      },
     }),
 
   outfits: (): Promise<Outfit[]> => req("/outfits"),

@@ -169,6 +169,7 @@ class StylistBody(BaseModel):
     prompt: str
     focus_item_id: Optional[str] = None
     weather_context: Optional[str] = None
+    avoid_item_ids: Optional[List[str]] = None  # ids of a look the user already saw → ask for a different one
 
 
 class ProfileBody(BaseModel):
@@ -525,6 +526,15 @@ async def stylist_generate(body: StylistBody, authorization: Optional[str] = Hea
         user_text += f"\n\nCURRENT LOCAL WEATHER: {body.weather_context}. Factor this temperature/conditions into fabric weight, layering and season suitability."
     if focus:
         user_text += f"\n\nMUST include and build around this item: {json.dumps(focus)}"
+    avoid = [i for i in (body.avoid_item_ids or []) if i in {w["id"] for w in wardrobe}]
+    if avoid:
+        seen = [w["name"] for w in wardrobe if w["id"] in avoid]
+        user_text += (
+            f"\n\nThe user ALREADY SAW a look made of: {json.dumps(seen)} (ids {json.dumps(avoid)}). "
+            "Propose a NOTICEABLY DIFFERENT outfit: swap at least two of those pieces for other wardrobe items where possible, "
+            "take a different styling angle (e.g. change the layer, shoe, or accessory) and give it a new outfit_name. "
+            "If the wardrobe is too small to avoid overlap, keep the focus item (if any) but still change what you can and say so in the note."
+        )
 
     chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"stylist-{uuid.uuid4().hex[:8]}", system_message=system).with_model("gemini", GEMINI_MODEL)
     try:
