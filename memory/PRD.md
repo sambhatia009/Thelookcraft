@@ -52,4 +52,5 @@ Build "StyleVault", a mobile-first AI Personal Stylist & Virtual Wardrobe app. U
 - Validate Save To Photos, location auto-refresh and share sheet on a real device build (not testable in Expo Go web preview).
 
 ## Bug fixes
+- **"Unsupported FormDataPart implementation" on Expo Go:** Expo SDK 57's global fetch rejects RN's legacy `{uri,name,type}` FormData part. `uploadItemImage` now appends `new File(uri)` from `expo-file-system` on native (Blob-compatible, filename+mime from URI). Verified via Node port of expo's `convertFormDataAsync` + web regression.
 - **Camera add-item silent failure (iOS Expo Go):** add-item is a native modal so root toasts rendered beneath it; large camera photos (~10 MB) took ~50 s and timed out. Fixed: on-device compression (`src/compress-image.ts`, expo-image-manipulator, 1280px JPEG), inline error + Try Again / Choose Another inside the modal, backend downscale before Gemini + concurrent tagging/rembg (~6-10 s).

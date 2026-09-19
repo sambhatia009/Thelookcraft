@@ -148,7 +148,11 @@ export async function uploadItemImage(uri: string) {
     const blob = await (await fetch(uri)).blob();
     form.append("file", blob, name);
   } else {
-    form.append("file", { uri, name, type: "image/jpeg" } as any);
+    // Expo's fetch rejects React Native's legacy `{ uri, name, type }` parts
+    // ("Unsupported FormDataPart implementation"); a Blob-compatible File works.
+    // Its filename/mime come from the file URI (.jpg → image/jpeg), which FastAPI needs for UploadFile.
+    const { File } = require("expo-file-system") as typeof import("expo-file-system");
+    form.append("file", new File(uri) as unknown as Blob);
   }
   const headers: Record<string, string> = {};
   if (inMemoryToken) headers["Authorization"] = `Bearer ${inMemoryToken}`;

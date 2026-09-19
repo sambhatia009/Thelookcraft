@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 4 — validation of the 'Unsupported FormDataPart implementation' native upload bug fix. All 5 asks in the review passed. (1) STATIC/NODE VERIFICATION: /app/backend/tests/test_native_multipart_node.js ports the pure logic of node_modules/expo/src/winter/fetch/convertFormData.ts::convertFormDataAsync and feeds it BOTH shapes. NEW native shape { bytes: async () => Uint8Array([0xff,0xd8,0xff]), name:'item_1.jpg', type:'image/jpeg' } produces a body containing exactly 'content-disposition: form-data; name=\"file\"; filename=\"item_1.jpg\"' AND 'content-type: image/jpeg' AND the raw FFD8FF bytes inline — this is exactly what FastAPI treats as an UploadFile. OLD RN legacy shape { uri, name, type } (no bytes()/no Blob) hits the final `else` branch and throws Error('Unsupported FormDataPart implementation') — confirms the diagnosis. 19/19 static+node assertions pass. (2) CODE REVIEW of /app/frontend/src/api.ts uploadItemImage: native branch uses `require('expo-file-system').File` lazily (inside the `else` of Platform.OS==='web', so web bundle never touches it) and appends `new File(uri)` (Blob-compatible); the legacy `{uri,name,type}` append is gone. expo-file-system pinned to ~57.0.7 in package.json and 57.0.7 installed; File.d.ts declares `class File extends ExpoFileSystem.FileSystemFile implements Blob` with `get name(): string`, and internal/NativeFileSystem.types.d.ts declares `type: string` + `bytes(): Promise<Uint8Array>` on the base — exactly the trio convertFormDataAsync consumes. (3) BACKEND: pytest /app/backend/tests/test_upload_filename_semantics.py (3/3 PASS in 21.7s on public URL): POST /api/items/upload with multipart part filename='item_1.jpg' + content-type image/jpeg returns 200 with id + category ∈ {Tops,Bottoms,Outerwear,Shoes,Accessories} + storage_path; a hand-crafted part WITHOUT filename returns 422 (documents why exposing `name` on the File-like object matters — Starlette otherwise turns it into a plain form field, not an UploadFile); no auth → 401. (4) FRONTEND WEB REGRESSION (390x844 mobile viewport): signup with fresh email → Closet (5 seeded items) → add-item-fab → choose-photo-btn (page.expect_file_chooser fed a real JPEG) → analyzing-overlay visible → tag-editor with prefilled name-field ('Burnt Orange Scarf') → save-item-btn → 'Item added to closet' toast → 6 items in Closet. Web branch (Blob path) unchanged and still works. (5) BUNDLE SANITY: zero console errors during the web session; no 'Cannot find native module' / 'expo-file-system' errors on web — the lazy require('expo-file-system') is correctly gated behind Platform.OS!=='web' so the web bundle never executes it. Native path is proven correct by the Node test; the browser cannot exercise Expo Go's fetch, but exercising Expo's own convertFormDataAsync in Node with the same File-like shape is the closest possible reproduction and it confirms the fix.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_native_multipart_node.js",
+    "/app/backend/tests/test_upload_filename_semantics.py",
+    "/app/backend/tests/test_upload_bugfix.py",
+    "/app/backend/tests/test_stylevault.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "api.ts uses `require('react-native').Platform` + `require('expo-file-system')` inline inside uploadItemImage — this is intentional (native-only lazy load keeps web bundle from importing expo-file-system) but note it also disables tree-shaking for these paths. Acceptable.",
+    "The upload endpoint (server.py L408) returns 200 even when Gemini tagging fails silently (tag_image swallows exceptions and returns {}), so category falls back to 'Tops' and name falls back to 'New Item'. Documented behavior — no action needed.",
+    "compress-image.ts silently falls back to original uri on any error (as noted in iteration 3); still not logged. Non-blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_native_multipart_node.js (new)",
+    "/app/backend/tests/test_upload_filename_semantics.py (new)",
+    "/app/test_reports/pytest/pytest_results.xml (regenerated)",
+    "/app/test_reports/iteration_4.json (created)"
+  ],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "seed_data_creation": "One fresh signup account created for web regression (iter4.web+<hex>@example.com / pass1234, auto-seeded 5 mock items + 1 uploaded → 6 items). One fresh signup for backend tests (iter4.upload+<hex>@example.com / pass1234) that added 1 uploaded item. No cleanup performed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Base URL: https://stylevault-app.preview.emergentagent.com — env var name in /app/frontend/.env is EXPO_PUBLIC_BACKEND_URL (not EXPO_BACKEND_URL). Backend test files: (a) pytest /app/backend/tests/test_upload_filename_semantics.py -o addopts='' — 3 tests, ~22s. (b) node /app/backend/tests/test_native_multipart_node.js — 5 groups, 19 static+behavioral assertions, <1s, no network. Pytest ini contains `-n auto --dist loadscope` so pass `-o addopts=''` when running a single file. For any future native FormData work, port the exact logic from node_modules/expo/src/winter/fetch/convertFormData.ts (that file requires only ../../utils/blobUtils which only touches Blob) — Node test in this iteration is the template. Web upload path uses the Blob branch and is fully exercisable via Playwright's page.expect_file_chooser wrapped around [data-testid='choose-photo-btn']. testIDs on the auth screen: toggle-mode, name-input, email-input, password-input, submit-button (text is 'Sign In' by default → click toggle-mode once to reach 'Create Account' mode).",
+  "rca_of_issue": "Confirmed. Root cause is exactly as diagnosed: Expo's global fetch (expo/winter) rejects the legacy React Native FormData part shape { uri, name, type } because convertFormDataAsync only accepts (a) string, (b) an instance of Blob, or (c) an object with `bytes()` — everything else falls through to `throw new Error('Unsupported FormDataPart implementation')` at convertFormData.ts:77. Proven by the Node test which reproduces this exact throw. Fix is correct: `new File(uri)` from expo-file-system extends `FileSystemFile implements Blob` and exposes `bytes(): Promise<Uint8Array>`, `name: string`, `type: string` — matches branch (c) and adds the filename/content-type multipart headers that FastAPI's UploadFile requires (backend 422 test proves filename is mandatory). Web path unchanged (Blob), zero console errors, bundle sanity preserved because require('expo-file-system') is inside the native `else` branch and never executes in the web bundle."
+}
