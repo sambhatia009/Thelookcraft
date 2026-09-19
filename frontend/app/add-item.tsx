@@ -9,6 +9,7 @@ import { Camera, Images, X } from "phosphor-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Item, uploadItemImage, api, imageUri } from "@/src/api";
+import { describeError, reportClientEvent } from "@/src/client-log";
 import { BatchEntry, BulkReview } from "@/src/components/bulk-review";
 import { ItemEditor } from "@/src/components/item-editor";
 import { compressForUpload } from "@/src/compress-image";
@@ -18,6 +19,15 @@ import { fontSize, makeStyles, spacing, useTheme } from "@/src/theme";
 import { Button } from "@/src/ui";
 
 const MAX_BATCH = 10;
+
+/** Downscale before upload; if that fails the original photo is sent (the server downsizes too). */
+async function prepare(uri: string, uploadId: string) {
+  try {
+    return await compressForUpload(uri, undefined, undefined, uploadId);
+  } catch {
+    return uri;
+  }
+}
 
 const editable = (it: Item) => ({
   name: it.name,
@@ -69,7 +79,7 @@ export default function AddItem() {
     setAnalyzing(true);
     setProgress("PREPARING PHOTO…");
     try {
-      if (!preparedUri.current) preparedUri.current = await compressForUpload(uri);
+      if (!preparedUri.current) preparedUri.current = await prepare(uri, uploadId.current);
       if (!mounted.current) return;
       if (active.signal.aborted) throw new Error("Upload paused. Tap Try Again to resume the same photo.");
       setLocalUri(preparedUri.current);
@@ -136,9 +146,11 @@ export default function AddItem() {
       const asset = result.assets[0];
       uploadId.current = newUploadId();
       preparedUri.current = null;
+      reportClientEvent("photo_picked", source, { width: asset.width, height: asset.height, fileSize: asset.fileSize, mimeType: asset.mimeType }, uploadId.current);
       setLocalUri(asset.uri);
       await upload(asset.uri);
-    } catch {
+    } catch (e) {
+      reportClientEvent("picker_failed", describeError(e), { source });
       setAnalyzing(false);
       setError("Could not open the camera or gallery. Please try again.");
     }
@@ -171,7 +183,7 @@ export default function AddItem() {
           const active = new AbortController();
           controller.current = active;
           patchEntry(next.key, { progress: "PREPARING PHOTO…" });
-          const uri = next.prepared ? next.localUri : await compressForUpload(next.localUri);
+          const uri = next.prepared ? next.localUri : await prepare(next.localUri, next.key);
           if (!mounted.current) break;
           patchEntry(next.key, { localUri: uri, prepared: true });
           const created = await uploadItemImage(uri, { uploadId: next.key, signal: active.signal,

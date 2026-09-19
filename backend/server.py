@@ -220,6 +220,16 @@ class VisualizeBody(BaseModel):
     outfit_name: Optional[str] = None
 
 
+class ClientLogBody(BaseModel):
+    event: str
+    message: Optional[str] = None
+    upload_id: Optional[str] = None
+    platform: Optional[str] = None
+    os_version: Optional[str] = None
+    runtime: Optional[str] = None
+    details: Optional[dict] = None
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -495,6 +505,24 @@ async def create_upload_job(job_id: str, request: Request, authorization: Option
         if len(raw) > MAX_BYTES:
             raise HTTPException(413, "Photo is too large. Choose a photo smaller than 16 MB.")
     return await upload_jobs.accept(user["user_id"], job_id, bytes(raw))
+
+
+@api_router.post("/client-logs", status_code=204)
+async def client_log(body: ClientLogBody, authorization: Optional[str] = Header(None)):
+    """On-device diagnostics: phones report where an upload stalled so failures are visible server-side."""
+    user_id = None
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            user_id = (await user_from_token(authorization.split(" ", 1)[1].strip()))["user_id"]
+        except HTTPException:
+            pass
+    doc = {**body.model_dump(), "user_id": user_id, "created_at": now_utc()}
+    doc["message"] = (doc.get("message") or "")[:2000]
+    await db.client_logs.insert_one(doc)
+    logging.getLogger("stylevault.client").warning(
+        "client event=%s user=%s platform=%s/%s runtime=%s upload=%s message=%s details=%s",
+        body.event, user_id, body.platform, body.os_version, body.runtime, body.upload_id, doc["message"], body.details)
+    return Response(status_code=204)
 
 
 @api_router.get("/items/upload-jobs/{job_id}", response_model=UploadJobResult)
