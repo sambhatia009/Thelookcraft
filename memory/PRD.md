@@ -97,6 +97,11 @@ Build "StyleVault", a mobile-first AI Personal Stylist & Virtual Wardrobe app. U
 - Fixes: persistent warm cutout worker (`cutout_worker.py --serve`, length-prefixed protocol, killed/respawned on timeout; warm cutout ≈0.5 s, pre-warmed at startup); `accept()` wakes the worker instantly; up to 3 jobs processed concurrently; `GET /api/items/upload-jobs/{id}?wait=N` long-polls (≤25 s) so the client learns completion immediately; client skips the resume-check GET on a fresh upload and reuses picker width/height (no `Image.getSize`); tagging uses a 768 px copy (≈2 s vs ≈4 s). Server-side acceptance→ready now ≈2.5–4.7 s (3 concurrent photos in 4.75 s total); web flow pick→editor 4.1 s.
 - Fault-injection tests updated for the warm worker/task-per-job loop: 8/8 pass.
 
+### Published app stuck at "clearing background" (production resources)
+- Deployment health check flags local rembg/ONNX inference as a BLOCKER for production container limits; published app (old snapshot) stalled at background removal while preview (8 GB / 4 CPU) was fine. User chose: **skip background removal in production, keep original photo, still auto-tag**.
+- Implemented `cutout_enabled()` in `upload_jobs.py`: `CUTOUT_MODE=on|off|auto` (default auto → disabled when cgroup memory < 3 GB or CPU < 1.5 cores or < 2 cpus). When disabled: no model warm-up, no cutout, item keeps `-original.jpg`, `background_removed=false`, no warning text. Legacy `/api/items/upload` `remove_background` honours the same switch. Verified with CUTOUT_MODE=off: complete in 5.3 s, original kept, no warning. Preview stays cutout-enabled (log line "upload worker started cutout_enabled=…").
+- User must Publish → Deploy again for the published app to pick up the new upload flow.
+
 ### Readiness health-check investigation
 - User asked to run health check, then fix its reported blocker. Two checks returned FAIL solely for missing `--tunnel`; all other reported configuration/compilation checks passed. First run also warned about local rembg resource usage (unchanged).
 - Independently verified public preview HTTP 200, `/api/` HTTP 200 with StyleVault response, Expo/backend RUNNING, public iOS Expo manifest runtime `exposdk:57.0.0`, and launch bundle URL using the configured public proxy hostname.

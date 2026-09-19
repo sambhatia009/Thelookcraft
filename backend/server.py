@@ -20,7 +20,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field
-from upload_jobs import UploadJobs, UploadJobResult, MAX_BYTES
+from upload_jobs import UploadJobs, UploadJobResult, MAX_BYTES, cutout_enabled
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -102,6 +102,8 @@ _rembg_session = None
 def remove_background(data: bytes) -> bytes:
     """Return a transparent PNG cutout. Falls back to original bytes on failure."""
     global _rembg_session
+    if not cutout_enabled():
+        return data
     try:
         from rembg import remove, new_session
         from PIL import Image

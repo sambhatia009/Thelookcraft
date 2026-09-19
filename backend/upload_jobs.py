@@ -56,6 +56,48 @@ def normalize_photo(raw: bytes) -> bytes:
         raise HTTPException(400, "This photo could not be read. Choose a JPEG or PNG photo.")
 
 
+def _cgroup_limits():
+    """(memory_bytes | None, cpus | None) from cgroup v2, falling back to v1."""
+    memory = cpus = None
+    try:
+        text = Path("/sys/fs/cgroup/memory.max").read_text().strip()
+        memory = None if text == "max" else int(text)
+    except (OSError, ValueError):
+        try:
+            memory = int(Path("/sys/fs/cgroup/memory/memory.limit_in_bytes").read_text())
+            if memory > 1 << 50:
+                memory = None
+        except (OSError, ValueError):
+            pass
+    try:
+        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()
+        cpus = None if quota == "max" else int(quota) / int(period)
+    except (OSError, ValueError):
+        try:
+            quota = int(Path("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").read_text())
+            period = int(Path("/sys/fs/cgroup/cpu/cpu.cfs_period_us").read_text())
+            cpus = None if quota < 0 else quota / period
+        except (OSError, ValueError):
+            pass
+    return memory, cpus
+
+
+def cutout_enabled() -> bool:
+    """Local background removal (rembg/ONNX) needs a few GB of RAM and >1 CPU. Small production
+    containers skip it and keep the original photo (user decision); CUTOUT_MODE=on|off overrides."""
+    mode = os.environ.get("CUTOUT_MODE", "auto").strip().lower()
+    if mode in ("off", "false", "0", "no"):
+        return False
+    if mode in ("on", "true", "1", "yes"):
+        return True
+    memory, cpus = _cgroup_limits()
+    if memory is not None and memory < 3 * 1024 ** 3:
+        return False
+    if cpus is not None and cpus < 1.5:
+        return False
+    return (os.cpu_count() or 1) >= 2
+
+
 def shrink_for_vision(photo: bytes, max_edge: int = 768) -> bytes:
     try:
         with Image.open(io.BytesIO(photo)) as image:
@@ -72,6 +114,10 @@ def shrink_for_vision(photo: bytes, max_edge: int = 768) -> bytes:
 
 async def cutout_photo(raw: bytes) -> Optional[bytes]:
     return await cutout_service.cutout(raw)
+
+
+async def _none():
+    return None
 
 
 class CutoutService:
@@ -156,6 +202,7 @@ class UploadJobs:
         self.db, self.tag, self.put, self.get, self.app_name = db, tag, put, get, app_name
         self.worker = None
         self.inflight = set()
+        self.cutout = cutout_enabled()
         self.wake = asyncio.Event()      # accept() sets it so processing starts immediately
         self.changed = asyncio.Event()   # process() sets it so long-polling clients return at once
 
@@ -265,8 +312,9 @@ class UploadJobs:
             await self.db.upload_jobs.update_one(query, {"$set": {"stage": "analysing"}})
             self.changed.set()
             timed = asyncio.get_running_loop().time()
-            tags, cutout = await asyncio.gather(self.tag_bounded(photo), cutout_photo(photo))
-            logger.info("upload processed job=%s tag+cutout=%.2fs", job["id"], asyncio.get_running_loop().time() - timed)
+            wants_cutout = self.cutout
+            tags, cutout = await asyncio.gather(self.tag_bounded(photo), cutout_photo(photo) if wants_cutout else _none())
+            logger.info("upload processed job=%s tag+cutout=%.2fs cutout_enabled=%s", job["id"], asyncio.get_running_loop().time() - timed, wants_cutout)
             warning = []
             path = job["original_path"]
             if cutout:
@@ -276,7 +324,7 @@ class UploadJobs:
                     path = stored["path"]
                 except Exception:
                     cutout = None
-            if not cutout:
+            if wants_cutout and not cutout:
                 warning.append("Background removal was unavailable; your original photo was kept.")
             if not tags.get("name"):
                 warning.append("Automatic tags were unavailable. Please enter the item details below.")
@@ -340,7 +388,11 @@ class UploadJobs:
         await self.db.upload_jobs.create_index([("status", 1), ("created_at", 1)])
         await self.db.items.create_index([("user_id", 1), ("id", 1)], unique=True)
         self.worker = asyncio.create_task(self.run())
-        asyncio.create_task(cutout_service.warm())  # load the model before the first photo arrives
+        memory, cpus = _cgroup_limits()
+        logger.info("upload worker started cutout_enabled=%s memory_limit=%s cpus=%s", self.cutout,
+                    f"{memory / 1024 ** 3:.1f}GB" if memory else "unlimited", cpus if cpus is not None else "unlimited")
+        if self.cutout:
+            asyncio.create_task(cutout_service.warm())  # load the model before the first photo arrives
 
     async def stop(self):
         tasks = [t for t in [self.worker, *self.inflight] if t]
