@@ -70,6 +70,30 @@ export type Item = {
   season: string;
   image_url?: string | null;
   storage_path?: string | null;
+  wear_count?: number;
+  last_worn_at?: string | null;
+};
+
+export type Outfit = {
+  id: string;
+  title: string;
+  stylist_note: string;
+  occasion?: string;
+  items: Item[];
+  item_ids: string[];
+  wear_count?: number;
+  created_at: string;
+};
+
+export type Insights = {
+  total_items: number;
+  total_wears: number;
+  saved_outfits: number;
+  most_worn: (Item & { outfit_appearances: number; score: number })[];
+  never_worn_count: number;
+  never_worn: Item[];
+  color_balance: { color: string; count: number; pct: number }[];
+  category_balance: { category: string; count: number; pct: number }[];
 };
 
 export type OutfitResult = {
@@ -102,10 +126,15 @@ export const api = {
       json: { prompt, focus_item_id: focus_item_id || null, weather_context: weather_context || null },
     }),
 
-  outfits: () => req("/outfits"),
+  outfits: (): Promise<Outfit[]> => req("/outfits"),
   saveOutfit: (payload: { title: string; item_ids: string[]; stylist_note?: string; occasion?: string }) =>
     req("/outfits", { method: "POST", json: payload }),
+  updateOutfit: (id: string, patch: { occasion?: string; title?: string }): Promise<Outfit> =>
+    req(`/outfits/${id}`, { method: "PATCH", json: patch }),
   deleteOutfit: (id: string) => req(`/outfits/${id}`, { method: "DELETE" }),
+  wearOutfit: (id: string) => req(`/outfits/${id}/wear`, { method: "POST" }),
+  wearItem: (id: string): Promise<Item> => req(`/items/${id}/wear`, { method: "POST" }),
+  insights: (): Promise<Insights> => req("/insights"),
 
   profile: () => req("/profile"),
   updateProfile: (patch: any) => req("/profile", { method: "PUT", json: patch }),

@@ -13,7 +13,8 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Take photos of your clothes to add them",
         "NSPhotoLibraryUsageDescription": "Add clothing photos from your gallery",
-        "NSLocationWhenInUseUsageDescription": "Match outfits to your local weather"
+        "NSLocationWhenInUseUsageDescription": "Match outfits to your local weather",
+        "NSPhotoLibraryAddUsageDescription": "Save your outfit cards to Photos"
       }
     },
     "android": {
@@ -64,7 +65,14 @@
           "locationWhenInUsePermission": "Match outfits to your local weather"
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-media-library",
+        {
+          "savePhotosPermission": "Save your outfit cards to Photos",
+          "isAccessMediaLocationEnabled": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

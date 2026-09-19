@@ -1,0 +1,56 @@
+{
+  "summary": "StyleVault iteration-2 testing focused on the 4 NEW features (Weather Auto-Refresh, Save To Photos, Occasion Tags, Wardrobe Insights) plus regression on prior flows. Backend: 19/19 pytest tests passed on public URL, including 7 new tests covering POST /outfits with occasion, PATCH /outfits/{id} + 404, POST /outfits/{id}/wear (items_logged, wear_count increments on outfit and every item), POST /items/{id}/wear + unknown 404 + cross-user 404, and GET /insights (total_items, total_wears, saved_outfits, most_worn sorted by wear_count*2+outfit_appearances, never_worn_count, color_balance pct sum ~100, 5 category_balance). Frontend (mobile web, 390x844): signup → Closet OK; Stylist quick prompt renders outfit-result; save-outfit-btn opens OccasionSheet; selecting occasion-Work + occasion-confirm shows 'Saved to lookbook · WORK' toast; custom-input 'Brunch' works and creates filter-Brunch chip; Lookbook filters (lookbook-filters, filter-All, filter-Work, filter-Brunch) filter correctly and occasion-badge-* shows uppercase 'WORK'/'BRUNCH'; wear-outfit-* → 'WORN 1×' worn-count-* appears; tag-outfit-* reopens sheet with preselect and updates badge; delete/share/wear actions all reachable. Item detail shows TIMES WORN row and wore-today-btn increments (TIMES WORN = 2 after tap). Profile insights-panel shows kpi-wears=4, most-worn-0 list, color-bar with legend, cat-Tops etc. Weather chip flow works end-to-end: label 'ENABLE WEATHER' → click with granted geolocation → '14°C · OVERCAST' → reload → auto-syncs to '14°C · OVERCAST' without re-prompt → 2nd click shows 'Weather sync off' toast and reverts to 'ENABLE WEATHER'. ONE BUG FOUND: Lookbook SAVE (save-outfit-*) on web silently fails — no download triggered AND no toast (neither success 'Image downloaded' nor fallback 'Could not create image'). Likely react-native-view-shot captureRef never resolves on web for the shot View, so both try and catch branches never run to fire the toast, but the finally clears busy. Deprecated Expo packages: none detected. RN Web pointerEvents deprecation warning still present from previous iteration.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Lookbook SAVE action (save-outfit-*)",
+        "issue": "On web, tapping SAVE neither triggers a download nor shows any toast (success or error). Expected 'Image downloaded' toast per spec. captureRef from react-native-view-shot 5.1.0 appears to not resolve on web for the ref-attached View — save() awaits capture(item) indefinitely without hitting the catch. Users get zero feedback and the SAVE button remains disabled (busy) until finally fires but no toast in either branch. Reference: /app/frontend/app/(tabs)/lookbook.tsx:119-134 and /app/frontend/src/save-to-photos.ts:12-18.",
+        "testID": "save-outfit-*",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "OccasionSheet inside Stylist",
+        "issues": [
+          "When the outfit-result card is tall, the chip 'occasion-Work' can end up outside viewport on 390x844 (Playwright reported 'Element is outside of the viewport' before we manually scrolled). Consider ensuring the bottom sheet content is always brought within viewport (e.g., ScrollView inside sheet, or scroll page to end before opening). Reference: /app/frontend/src/components/occasion-sheet.tsx."
+        ]
+      }
+    ],
+    "react_native_issues": [
+      {
+        "component": "pointerEvents prop (RN Web deprecation)",
+        "issue": "Persisting warning from prior iteration: 'props.pointerEvents is deprecated. Use style.pointerEvents.' Non-blocking. Reference: still surfaced in browser console during Stylist screen render."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_stylevault.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "FIX: Lookbook SAVE on web silently does nothing. Options: (a) short-circuit on web to skip captureRef and use html2canvas / a simpler PNG (e.g., render the same card into an <canvas> via dom-to-image or html-to-image), (b) add a timeout race around captureRef so the catch fires 'Could not create image' toast for at least user feedback, (c) verify react-native-view-shot v5 web support and pass alternate options. In save() at /app/frontend/app/(tabs)/lookbook.tsx:119, wrap capture(item) with `Promise.race([capture(item), new Promise((_,rej)=>setTimeout(()=>rej(new Error('capture timeout')), 8000))])` so users see an error toast on failure.",
+    "Ensure OccasionSheet keeps its chips fully in viewport on tall outfit-result screens (Stylist). Consider wrapping the sheet body in a ScrollView or auto-scrolling to sheet on open.",
+    "Optional (from previous iteration, still open): Migrate any `pointerEvents=\"...\"` props to `style.pointerEvents` to silence RN Web deprecation warning.",
+    "Optional (from previous iteration, still open): Make Closet filter ChipRow horizontally scrollable so 'Accessories' chip is reachable on 390px width."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/app/(tabs)/lookbook.tsx save() has NO user feedback path when captureRef hangs — both success and error branches require capture to resolve. Add a timeout race or a 'started' toast for observability.",
+    "The Action button 'SAVE' is disabled while busy===item.id, but there is no visible loading indicator inside the action — users cannot tell whether the tap registered. Consider a spinner replacing the icon when busy.",
+    "server.py wear_outfit does not require items_logged>0 — pressing WEAR on an outfit whose items were all deleted returns items_logged:0 while still incrementing outfit.wear_count. Consider guarding or communicating this state.",
+    "log_wear uses async list comprehension over motor cursor to fetch item ids — for large item_ids arrays this is fine but could use a single find + list(...) for clarity."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_stylevault.py (added TestOccasionWearInsights class with 7 new tests)",
+    "/app/test_reports/pytest/pytest_results.xml (regenerated)",
+    "/app/test_reports/iteration_2.json (created)"
+  ],
+  "success_rate": { "backend": "100%", "frontend": "93%" },
+  "seed_data_creation": "Fresh accounts created via signup (e2e.sv+<hex>@example.com / pass1234). Each seeds 5 mock wardrobe items. Additional test outfits saved with occasions 'Work' and 'Brunch' persist in the preview MongoDB — no cleanup performed (soft-delete only). Tests do not touch other users' data.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Base URL: https://stylevault-app.preview.emergentagent.com. Backend uses EmailStr — use example.com TLD for test emails. All new testIDs verified present: quick-Casual weekend look, outfit-result, save-outfit-btn, occasion-{Work,Date,Travel,Casual,Event}, occasion-custom-input, occasion-skip, occasion-confirm, occasion-backdrop, occasion-close, lookbook-filters, filter-All / filter-<Tag>, occasion-badge-<id>, tag-outfit-<id>, share/save/wear/delete-outfit-<id>, worn-count-<id>, insights-panel, kpi-wears / kpi-outfits / kpi-never, most-worn-<idx>, color-bar, color-<Color>, cat-<Category>, wore-today-btn, weather-chip. When testing OccasionSheet inside Stylist tab, scroll page to bottom BEFORE clicking save-outfit-btn or use JS click on the chip to avoid 'outside of viewport' errors. Weather geolocation: page.context.grant_permissions(['geolocation'], origin=BASE) + set_geolocation before clicking weather-chip. AI stylist calls Gemini ~5–15s; wait up to 60s for outfit-result.",
+  "rca_of_issue": "SAVE on Lookbook (web) silently fails: capture(item) awaits captureRef from react-native-view-shot 5.1.0. On web this call appears to never resolve for the shot View, so save() blocks in the try after `const uri = await capture(item)` — the toast in success line 125 never fires, and because no rejection occurs the catch on line 129 also never fires. `finally` still runs and clears `busy`, but no user feedback is shown. Reproduction: signup → Stylist → quick-Casual weekend look → save-outfit-btn → occasion-Work → confirm → Lookbook → tap SAVE on card. Observation: no download event fires in Playwright and no toast text appears in DOM. Mitigation options in action_items."
+}

@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api } from "@/src/api";
 import { useAuth } from "@/src/auth";
+import { InsightsPanel } from "@/src/components/insights";
 import { usesNativeTabs } from "@/src/navigation";
 import { useToast } from "@/src/toast";
 import { fontSize, makeStyles, spacing, useTheme } from "@/src/theme";
@@ -72,6 +73,10 @@ export default function Profile() {
             </View>
           ))}
         </View>
+
+        <Section title="WARDROBE INSIGHTS">
+          <InsightsPanel />
+        </Section>
 
         <Section title="DRESS CODE DEFAULTS">
           <View style={styles.chipWrap}>

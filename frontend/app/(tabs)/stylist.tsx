@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, Item, OutfitResult } from "@/src/api";
 import { ItemThumb } from "@/src/components/item-thumb";
+import { OccasionSheet } from "@/src/components/occasion-sheet";
 import { usesNativeTabs } from "@/src/navigation";
 import { useToast } from "@/src/toast";
 import { useWeather } from "@/src/weather";
@@ -48,10 +49,13 @@ export default function Stylist() {
   const [input, setInput] = useState("");
   const [focus, setFocus] = useState<Item | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [tagging, setTagging] = useState<Extract<Msg, { kind: "result" }> | null>(null);
   const scrollRef = useRef<ScrollView>(null);
-  const { weather, loading: weatherLoading, enable: enableWeather } = useWeather();
+  const { weather, loading: weatherLoading, enabled: weatherEnabled, enable: enableWeather, disable: disableWeather } = useWeather();
 
   const { data: items } = useQuery({ queryKey: ["items", "All"], queryFn: () => api.items("All") });
+  const { data: outfits } = useQuery({ queryKey: ["outfits"], queryFn: () => api.outfits() });
+  const customTags = Array.from(new Set((outfits || []).map((o) => o.occasion || "").filter(Boolean)));
 
   useEffect(() => {
     if (params.focusId && items) {
@@ -91,25 +95,40 @@ export default function Stylist() {
   };
 
   const toggleWeather = async () => {
+    if (weatherEnabled) {
+      await disableWeather();
+      show("Weather sync off", "default");
+      return;
+    }
     const w = await enableWeather();
     if (w) show(`Weather synced · ${w.label}`, "success");
     else show("Location permission needed for weather", "error");
   };
 
-  const saveOutfit = async (msg: Extract<Msg, { kind: "result" }>) => {
+  const saveOutfit = async (msg: Extract<Msg, { kind: "result" }>, occasion: string) => {
     try {
       await api.saveOutfit({
         title: msg.result.outfit_name,
         item_ids: msg.result.item_ids,
         stylist_note: msg.result.stylist_note,
+        occasion,
       });
       setMessages((m) => m.map((x) => (x.kind === "result" && x.id === msg.id ? { ...x, saved: true } : x)));
       qc.invalidateQueries({ queryKey: ["outfits"] });
-      show("Saved to lookbook", "success");
+      qc.invalidateQueries({ queryKey: ["insights"] });
+      show(occasion ? `Saved to lookbook · ${occasion.toUpperCase()}` : "Saved to lookbook", "success");
     } catch {
       show("Could not save outfit", "error");
     }
   };
+
+  const weatherChipLabel = weatherLoading
+    ? "SYNCING…"
+    : weather
+      ? weather.label
+      : weatherEnabled
+        ? "WEATHER UNAVAILABLE"
+        : "ENABLE WEATHER";
 
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
   const empty = messages.length === 0;
@@ -121,11 +140,9 @@ export default function Stylist() {
           <Text style={styles.title}>STYLIST</Text>
           <Text style={styles.sub}>AI-CURATED FROM YOUR CLOSET</Text>
         </View>
-        <Pressable style={styles.weatherChip} onPress={toggleWeather} testID="weather-chip">
-          <Sun color={colors.onSurface} size={16} weight="bold" />
-          <Text style={styles.weatherText}>
-            {weatherLoading ? "SYNCING…" : weather ? weather.label : "ENABLE WEATHER"}
-          </Text>
+        <Pressable style={[styles.weatherChip, weatherEnabled && styles.weatherChipOn]} onPress={toggleWeather} testID="weather-chip">
+          <Sun color={weatherEnabled ? colors.onBrandPrimary : colors.onSurface} size={16} weight="bold" />
+          <Text style={[styles.weatherText, weatherEnabled && { color: colors.onBrandPrimary }]}>{weatherChipLabel}</Text>
         </Pressable>
       </View>
       <View style={styles.hairline} />
@@ -156,7 +173,7 @@ export default function Stylist() {
               <Text style={styles.userText}>{m.text}</Text>
             </View>
           ) : (
-            <ResultCard key={m.id} msg={m} onSave={() => saveOutfit(m)} onRetry={() => retry(QUICK_PROMPTS[0])} onAddMissing={() => router.push("/add-item")} onShop={shop} />
+            <ResultCard key={m.id} msg={m} onSave={() => setTagging(m)} onRetry={() => retry(QUICK_PROMPTS[0])} onAddMissing={() => router.push("/add-item")} onShop={shop} />
           )
         )}
 
@@ -216,6 +233,19 @@ export default function Stylist() {
         onPick={(it) => {
           setFocus(it);
           setPickerOpen(false);
+        }}
+      />
+
+      <OccasionSheet
+        open={!!tagging}
+        title="SAVE TO LOOKBOOK"
+        confirmLabel="Save Look"
+        extraTags={customTags}
+        onClose={() => setTagging(null)}
+        onConfirm={(occasion) => {
+          const msg = tagging;
+          setTagging(null);
+          if (msg) saveOutfit(msg, occasion);
         }}
       />
     </View>
@@ -333,6 +363,7 @@ const useStyles = makeStyles((c) => ({
   title: { fontSize: fontSize["3xl"], fontWeight: "900", letterSpacing: 1, color: c.onSurface },
   sub: { fontSize: fontSize.sm, color: c.muted, letterSpacing: 1, marginTop: 2 },
   weatherChip: { flexDirection: "row", alignItems: "center", gap: spacing.xs, borderWidth: 1, borderColor: c.borderStrong, paddingHorizontal: spacing.md, height: 36 },
+  weatherChipOn: { backgroundColor: c.brandPrimary, borderColor: c.brandPrimary },
   weatherText: { fontSize: 11, fontWeight: "800", letterSpacing: 1, color: c.onSurface },
   hairline: { height: 1, backgroundColor: c.borderStrong },
 

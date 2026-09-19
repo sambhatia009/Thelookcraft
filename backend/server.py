@@ -158,6 +158,11 @@ class OutfitBody(BaseModel):
     occasion: str = ""
 
 
+class OutfitUpdate(BaseModel):
+    occasion: Optional[str] = None
+    title: Optional[str] = None
+
+
 class StylistBody(BaseModel):
     prompt: str
     focus_item_id: Optional[str] = None
@@ -554,11 +559,103 @@ async def save_outfit(body: OutfitBody, authorization: Optional[str] = Header(No
     return clean_item(doc)
 
 
+@api_router.patch("/outfits/{outfit_id}")
+async def update_outfit(outfit_id: str, body: OutfitUpdate, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    updates = {k: v.strip() if isinstance(v, str) else v for k, v in body.dict().items() if v is not None}
+    if updates:
+        await db.outfits.update_one({"id": outfit_id, "user_id": user["user_id"]}, {"$set": updates})
+    doc = await db.outfits.find_one({"id": outfit_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Outfit not found")
+    return doc
+
+
 @api_router.delete("/outfits/{outfit_id}")
 async def delete_outfit(outfit_id: str, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
     await db.outfits.update_one({"id": outfit_id, "user_id": user["user_id"]}, {"$set": {"deleted_at": now_utc()}})
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Wear tracking + insights
+# ---------------------------------------------------------------------------
+async def log_wear(user_id: str, item_ids: List[str], outfit_id: Optional[str] = None) -> int:
+    ids = [i async for i in db.items.find({"id": {"$in": item_ids}, "user_id": user_id, "deleted_at": None}, {"_id": 0, "id": 1})]
+    ids = [d["id"] for d in ids]
+    if not ids:
+        return 0
+    ts = now_utc()
+    await db.items.update_many({"id": {"$in": ids}}, {"$inc": {"wear_count": 1}, "$set": {"last_worn_at": ts}})
+    await db.wear_log.insert_many([{"id": str(uuid.uuid4()), "user_id": user_id, "item_id": i, "outfit_id": outfit_id, "worn_at": ts} for i in ids])
+    return len(ids)
+
+
+@api_router.post("/items/{item_id}/wear")
+async def wear_item(item_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    n = await log_wear(user["user_id"], [item_id])
+    if not n:
+        raise HTTPException(status_code=404, detail="Item not found")
+    doc = await db.items.find_one({"id": item_id, "user_id": user["user_id"]}, {"_id": 0})
+    return doc
+
+
+@api_router.post("/outfits/{outfit_id}/wear")
+async def wear_outfit(outfit_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    outfit = await db.outfits.find_one({"id": outfit_id, "user_id": user["user_id"], "deleted_at": None}, {"_id": 0})
+    if not outfit:
+        raise HTTPException(status_code=404, detail="Outfit not found")
+    n = await log_wear(user["user_id"], outfit.get("item_ids", []), outfit_id)
+    await db.outfits.update_one({"id": outfit_id}, {"$inc": {"wear_count": 1}, "$set": {"last_worn_at": now_utc()}})
+    return {"ok": True, "items_logged": n}
+
+
+@api_router.get("/insights")
+async def insights(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    items = await db.items.find({"user_id": user["user_id"], "deleted_at": None}, {"_id": 0}).to_list(1000)
+    outfits = await db.outfits.find({"user_id": user["user_id"], "deleted_at": None}, {"_id": 0, "item_ids": 1}).to_list(1000)
+
+    appearances: dict = {}
+    for o in outfits:
+        for i in o.get("item_ids", []):
+            appearances[i] = appearances.get(i, 0) + 1
+
+    scored = []
+    for it in items:
+        wears = int(it.get("wear_count") or 0)
+        apps = appearances.get(it["id"], 0)
+        scored.append({**it, "wear_count": wears, "outfit_appearances": apps, "score": wears * 2 + apps})
+    scored.sort(key=lambda x: (-x["score"], x["name"]))
+    most_worn = [s for s in scored if s["score"] > 0][:5]
+    never_worn = [s for s in scored if s["score"] == 0]
+
+    total = len(items)
+    colors: dict = {}
+    for it in items:
+        c = (it.get("color") or "Unknown").strip().title()
+        colors[c] = colors.get(c, 0) + 1
+    color_balance = sorted(
+        [{"color": k, "count": v, "pct": round(v * 100 / total) if total else 0} for k, v in colors.items()],
+        key=lambda x: -x["count"],
+    )
+    category_balance = [
+        {"category": c, "count": sum(1 for it in items if it.get("category") == c), "pct": round(sum(1 for it in items if it.get("category") == c) * 100 / total) if total else 0}
+        for c in CATEGORIES
+    ]
+    return {
+        "total_items": total,
+        "total_wears": sum(int(it.get("wear_count") or 0) for it in items),
+        "saved_outfits": len(outfits),
+        "most_worn": most_worn,
+        "never_worn_count": len(never_worn),
+        "never_worn": never_worn[:5],
+        "color_balance": color_balance,
+        "category_balance": category_balance,
+    }
 
 
 # ---------------------------------------------------------------------------

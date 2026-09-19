@@ -174,6 +174,122 @@ class TestOutfits:
         assert not any(o["id"] == outfit_id for o in outs_after)
 
 
+# ----- Occasion tags, wear tracking, insights (new features) -----
+class TestOccasionWearInsights:
+    def test_save_outfit_with_occasion_persists(self, account):
+        items = account["session"].get(f"{API}/items").json()
+        payload = {
+            "title": "TEST_Work_Look",
+            "item_ids": [items[0]["id"], items[1]["id"]],
+            "stylist_note": "office look",
+            "occasion": "Work",
+        }
+        r = account["session"].post(f"{API}/outfits", json=payload)
+        assert r.status_code == 200
+        outfit = r.json()
+        assert outfit["occasion"] == "Work"
+        outfit_id = outfit["id"]
+
+        # Verify via GET
+        outs = account["session"].get(f"{API}/outfits").json()
+        got = next(o for o in outs if o["id"] == outfit_id)
+        assert got["occasion"] == "Work"
+
+    def test_patch_outfit_occasion(self, account):
+        items = account["session"].get(f"{API}/items").json()
+        r = account["session"].post(f"{API}/outfits", json={
+            "title": "TEST_TagChange", "item_ids": [items[0]["id"]], "occasion": "Work",
+        })
+        outfit_id = r.json()["id"]
+
+        r2 = account["session"].patch(f"{API}/outfits/{outfit_id}", json={"occasion": "Brunch"})
+        assert r2.status_code == 200
+        assert r2.json()["occasion"] == "Brunch"
+
+        outs = account["session"].get(f"{API}/outfits").json()
+        assert next(o for o in outs if o["id"] == outfit_id)["occasion"] == "Brunch"
+
+    def test_patch_unknown_outfit_returns_404(self, account):
+        r = account["session"].patch(f"{API}/outfits/does-not-exist-xyz", json={"occasion": "Work"})
+        assert r.status_code == 404
+
+    def test_wear_outfit_increments_counts(self, account):
+        items = account["session"].get(f"{API}/items").json()
+        ids = [items[0]["id"], items[1]["id"]]
+        # baseline wear_count
+        baseline = {i["id"]: int(i.get("wear_count") or 0) for i in items if i["id"] in ids}
+
+        r = account["session"].post(f"{API}/outfits", json={
+            "title": "TEST_WearLook", "item_ids": ids, "occasion": "Casual",
+        })
+        outfit_id = r.json()["id"]
+
+        r2 = account["session"].post(f"{API}/outfits/{outfit_id}/wear")
+        assert r2.status_code == 200
+        data = r2.json()
+        assert data.get("ok") is True
+        assert data.get("items_logged") == len(ids)
+
+        # outfit wear_count present in list
+        outs = account["session"].get(f"{API}/outfits").json()
+        o = next(o for o in outs if o["id"] == outfit_id)
+        assert int(o.get("wear_count") or 0) >= 1
+
+        # each item wear_count incremented
+        items_after = account["session"].get(f"{API}/items").json()
+        for it in items_after:
+            if it["id"] in ids:
+                assert int(it.get("wear_count") or 0) >= baseline[it["id"]] + 1
+
+    def test_wear_item_and_unknown(self, account):
+        items = account["session"].get(f"{API}/items").json()
+        target = items[2]  # pick a different item
+        before = int(target.get("wear_count") or 0)
+        r = account["session"].post(f"{API}/items/{target['id']}/wear")
+        assert r.status_code == 200
+        assert int(r.json().get("wear_count") or 0) == before + 1
+
+        # unknown id
+        r2 = account["session"].post(f"{API}/items/nonexistent-item-id/wear")
+        assert r2.status_code == 404
+
+    def test_wear_other_users_item_returns_404(self, account):
+        # Create a second account, then try to wear its item using first account's token
+        email = f"test.sv+other{uuid.uuid4().hex[:8]}@example.com"
+        r = requests.post(f"{API}/auth/register", json={"name": "Other", "email": email, "password": "pass1234"})
+        assert r.status_code == 200
+        other_token = r.json()["session_token"]
+        other_items = requests.get(f"{API}/items", headers={"Authorization": f"Bearer {other_token}"}).json()
+        other_id = other_items[0]["id"]
+
+        r2 = account["session"].post(f"{API}/items/{other_id}/wear")
+        assert r2.status_code == 404
+
+    def test_insights_shape(self, account):
+        r = account["session"].get(f"{API}/insights")
+        assert r.status_code == 200
+        d = r.json()
+        for k in ("total_items", "total_wears", "saved_outfits", "most_worn",
+                  "never_worn_count", "color_balance", "category_balance"):
+            assert k in d, f"missing key {k}"
+        assert d["total_wears"] >= 1  # we wore items in prior tests
+        assert d["saved_outfits"] >= 1
+        # most_worn sorted by wear_count*2 + outfit_appearances
+        prev = None
+        for m in d["most_worn"]:
+            assert "wear_count" in m and "outfit_appearances" in m
+            score = int(m["wear_count"]) * 2 + int(m["outfit_appearances"])
+            if prev is not None:
+                assert prev >= score
+            prev = score
+        # color balance percentages sum roughly to 100 (rounding tolerance)
+        s = sum(c["pct"] for c in d["color_balance"])
+        assert 95 <= s <= 105, f"color pct sum out of range: {s}"
+        # 5 categories present
+        cats = [c["category"] for c in d["category_balance"]]
+        assert cats == ["Tops", "Bottoms", "Outerwear", "Shoes", "Accessories"]
+
+
 # ----- Profile -----
 class TestProfile:
     def test_get_and_update_profile(self, account):

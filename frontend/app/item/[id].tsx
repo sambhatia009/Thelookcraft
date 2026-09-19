@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
-import { Sparkle, Trash, X } from "phosphor-react-native";
+import { CheckCircle, Sparkle, X } from "phosphor-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, Item } from "@/src/api";
@@ -21,6 +22,23 @@ export default function ItemDetail() {
 
   const { data: items, isLoading } = useQuery({ queryKey: ["items", "All"], queryFn: () => api.items("All") });
   const item: Item | undefined = items?.find((i) => i.id === id);
+  const [wearing, setWearing] = useState(false);
+
+  const wore = async () => {
+    if (!item || wearing) return;
+    setWearing(true);
+    try {
+      const updated = await api.wearItem(item.id);
+      qc.setQueryData<Item[]>(["items", "All"], (old) => old?.map((i) => (i.id === updated.id ? { ...i, ...updated } : i)));
+      qc.invalidateQueries({ queryKey: ["items"] });
+      qc.invalidateQueries({ queryKey: ["insights"] });
+      show(`Logged · worn ${updated.wear_count ?? 1}×`, "success");
+    } catch {
+      show("Could not log wear", "error");
+    } finally {
+      setWearing(false);
+    }
+  };
 
   const del = async () => {
     if (!item) return;
@@ -47,6 +65,7 @@ export default function ItemDetail() {
         ["FORMALITY", item.formality || "—"],
         ["FABRIC", item.fabric || "—"],
         ["SEASON", item.season || "—"],
+        ["TIMES WORN", String(item.wear_count ?? 0)],
       ]
     : [];
 
@@ -87,6 +106,10 @@ export default function ItemDetail() {
               <Sparkle color={colors.onBrandPrimary} size={20} weight="fill" />
               <Text style={styles.styleBtnText}>STYLE AROUND THIS</Text>
             </Pressable>
+            <Pressable style={[styles.woreBtn, wearing && { opacity: 0.5 }]} onPress={wore} disabled={wearing} testID="wore-today-btn">
+              <CheckCircle color={colors.onSurface} size={20} weight="bold" />
+              <Text style={styles.woreBtnText}>WORE IT TODAY</Text>
+            </Pressable>
             <Button title="Delete Item" variant="outline" onPress={del} testID="delete-item-btn" />
           </View>
         </ScrollView>
@@ -111,4 +134,6 @@ const useStyles = makeStyles((c) => ({
   actions: { padding: spacing.lg, gap: spacing.md },
   styleBtn: { height: 52, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, backgroundColor: c.brandPrimary },
   styleBtnText: { fontSize: fontSize.base, fontWeight: "800", letterSpacing: 1, color: c.onBrandPrimary },
+  woreBtn: { height: 52, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, borderWidth: 1, borderColor: c.borderStrong, backgroundColor: c.surfaceTertiary },
+  woreBtnText: { fontSize: fontSize.base, fontWeight: "800", letterSpacing: 1, color: c.onSurface },
 }));

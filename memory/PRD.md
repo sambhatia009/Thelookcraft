@@ -37,10 +37,16 @@ Build "StyleVault", a mobile-first AI Personal Stylist & Virtual Wardrobe app. U
 - **Shop The Gap:** the AI's missing-item suggestion is now a tappable "SHOP THE GAP" button that opens a shopping search for that exact item.
 - **Outfit Share Card:** every saved look has a Share button that renders an editorial, watermarked image (react-native-view-shot) and opens the native share sheet (downloads on web).
 
+## Added (2026-06, iteration 3)
+- **Weather Auto-Refresh:** weather preference persisted (`sv_weather_enabled`); once enabled the chip auto-syncs on open (no re-prompt), refreshes every 15 min and on app foreground; chip toggles sync off.
+- **Save To Photos:** Lookbook SAVE action captures the editorial card and writes it to the camera roll via `expo-media-library` (add-only permission, Open Settings toast action when blocked). Web downloads the PNG.
+- **Occasion Tags:** saving a look opens an OccasionSheet (Work/Date/Travel/Casual/Event + custom text). Lookbook shows filter chips (All / used tags / Untagged), a tag badge on the card, and ADD/EDIT TAG. `PATCH /api/outfits/{id}`.
+- **Wardrobe Insights:** Profile "WARDROBE INSIGHTS" — wears logged / saved looks / never worn KPIs, MOST WORN (wear_count×2 + outfit appearances), color balance bar + legend, category balance. Wear logging via "WORE IT TODAY" (item detail, `POST /api/items/{id}/wear`) and Lookbook WEAR (`POST /api/outfits/{id}/wear`). `GET /api/insights`.
+- Verified: 19/19 backend pytest + frontend e2e pass (testing agent iteration 2 + manual Save-to-Photos web check).
+
 ## Backlog (prioritized)
-- **P1:** Outfit "shop the missing item" links; weather auto-detect via location; multi-select bulk upload.
-- **P2:** Wardrobe analytics (most-worn, color distribution); share outfit as an editorial image card; calendar/outfit planner.
+- **P1:** multi-select bulk upload; calendar/outfit planner.
+- **P2:** wear history timeline; cost-per-wear; outfit suggestions from never-worn items.
 
 ## Next Tasks
-- Location-based weather context for smarter seasonal suggestions.
-- Shareable outfit export.
+- Validate Save To Photos, location auto-refresh and share sheet on a real device build (not testable in Expo Go web preview).
