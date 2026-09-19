@@ -44,9 +44,18 @@ Build "StyleVault", a mobile-first AI Personal Stylist & Virtual Wardrobe app. U
 - **Wardrobe Insights:** Profile "WARDROBE INSIGHTS" — wears logged / saved looks / never worn KPIs, MOST WORN (wear_count×2 + outfit appearances), color balance bar + legend, category balance. Wear logging via "WORE IT TODAY" (item detail, `POST /api/items/{id}/wear`) and Lookbook WEAR (`POST /api/outfits/{id}/wear`). `GET /api/insights`.
 - Verified: 19/19 backend pytest + frontend e2e pass (testing agent iteration 2 + manual Save-to-Photos web check).
 
+## Added (2026-06, iteration 4)
+- **Bulk Upload:** gallery multi-select (≤10); sequential analyse with progress (`src/components/bulk-review.tsx`); per-row compact editor; retry/remove; "Save N to Closet". Shared `src/components/item-editor.tsx` (also used by single add + item edit).
+- **Item editing:** item detail EDIT → full editor incl. NOTES/DESCRIPTION (`notes`); "Don't suggest in looks" switch (`preference: avoid|neutral`, hidden from stylist).
+- **Never-Worn Nudges:** Stylist empty-state nudge (insights.never_worn_count) → prompt with `prefer_unworn`; wardrobe JSON sent to Gemini carries `never_worn`/`times_worn`/`notes`.
+- **Outfit Feedback:** 👍/👎 per look → `POST /api/stylist/feedback`; 👎 auto "Try another"; taste summary (liked/disliked combos, rejected/approved pieces, banned pieces) injected into every stylist prompt; `GET /api/stylist/taste`. Piece action sheet: swap / remove / "Don't suggest this again" (with Undo).
+- **Gemini models:** stylist → `gemini-3.1-pro-preview`; tagging stays `gemini-3-flash-preview`; try-on → `gemini-3.1-flash-image-preview` (Nano Banana).
+- **Visualise on me:** Profile "ABOUT YOU" (gender, age, full-body photo → `POST /api/profile/photo`, private storage); result card "VISUALISE ON ME" → `POST /api/stylist/visualize` composes user photo + garment references → editorial try-on image, cached per item-set, invalidated on photo change.
+- Verified: 20/20 backend pytest + frontend e2e (testing agent iteration 6) + manual 👎/visualise flows.
+
 ## Backlog (prioritized)
-- **P1:** multi-select bulk upload; calendar/outfit planner.
-- **P2:** wear history timeline; cost-per-wear; outfit suggestions from never-worn items.
+- **P1:** calendar/outfit planner; wear history timeline.
+- **P2:** cost-per-wear; visualise saved Lookbook looks; share try-on image.
 
 ## Next Tasks
 - Validate Save To Photos, location auto-refresh and share sheet on a real device build (not testable in Expo Go web preview).

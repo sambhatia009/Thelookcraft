@@ -38,7 +38,9 @@ db = client[os.environ["DB_NAME"]]
 # LLM (Emergent universal key -> Gemini 3 Flash)
 # ---------------------------------------------------------------------------
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
-GEMINI_MODEL = "gemini-3-flash-preview"
+GEMINI_MODEL = "gemini-3-flash-preview"  # vision tagging (fast)
+STYLIST_MODEL = "gemini-3.1-pro-preview"  # stylist reasoning (stronger)
+IMAGE_MODEL = "gemini-3.1-flash-image-preview"  # Nano Banana: outfit visualisation on the user's photo
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent  # noqa: E402
 
@@ -151,6 +153,15 @@ class ItemUpdate(BaseModel):
     formality: Optional[str] = None
     fabric: Optional[str] = None
     season: Optional[str] = None
+    notes: Optional[str] = None
+    preference: Optional[str] = None  # "avoid" → never suggest in looks; "neutral" → clear
+
+
+class FeedbackBody(BaseModel):
+    verdict: str  # "up" | "down"
+    item_ids: List[str]
+    outfit_name: Optional[str] = None
+    prompt: Optional[str] = None
 
 
 class OutfitBody(BaseModel):
@@ -170,6 +181,7 @@ class StylistBody(BaseModel):
     focus_item_id: Optional[str] = None
     weather_context: Optional[str] = None
     avoid_item_ids: Optional[List[str]] = None  # ids of a look the user already saw → ask for a different one
+    prefer_unworn: Optional[bool] = False  # build the look around pieces the user hasn't worn yet
 
 
 class ProfileBody(BaseModel):
@@ -177,6 +189,13 @@ class ProfileBody(BaseModel):
     body_fit: Optional[str] = None
     color_palette: Optional[List[str]] = None
     weather: Optional[str] = None
+    gender: Optional[str] = None  # Female / Male / Non-binary / Prefer not to say
+    age: Optional[int] = None
+
+
+class VisualizeBody(BaseModel):
+    item_ids: List[str]
+    outfit_name: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -458,6 +477,8 @@ async def list_items(authorization: Optional[str] = Header(None), category: Opti
 async def update_item(item_id: str, body: ItemUpdate, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
     updates = {k: v for k, v in body.dict().items() if v is not None}
+    if "preference" in updates and updates["preference"] not in ("avoid", "neutral"):
+        raise HTTPException(status_code=400, detail="preference must be 'avoid' or 'neutral'")
     if updates:
         await db.items.update_one({"id": item_id, "user_id": user["user_id"]}, {"$set": updates})
     doc = await db.items.find_one({"id": item_id, "user_id": user["user_id"]}, {"_id": 0})
@@ -494,27 +515,121 @@ async def serve_file(path: str, token: Optional[str] = Query(None), authorizatio
 # ---------------------------------------------------------------------------
 # Stylist
 # ---------------------------------------------------------------------------
+async def taste_summary(user_id: str, names_by_id: dict) -> str:
+    """Compress thumbs up/down history into a few lines the stylist can act on."""
+    fb = await db.feedback.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    avoided_ids = await _avoided_ids(user_id)
+    avoided = [v for k, v in names_by_id.items() if k in avoided_ids]
+    if not fb and not avoided:
+        return ""
+    liked_items: dict = {}
+    disliked_items: dict = {}
+    liked_looks: List[str] = []
+    disliked_looks: List[str] = []
+    for f in fb:
+        names = [names_by_id[i] for i in f.get("item_ids", []) if i in names_by_id]
+        if not names:
+            continue
+        bucket = liked_items if f["verdict"] == "up" else disliked_items
+        for n in names:
+            bucket[n] = bucket.get(n, 0) + 1
+        looks = liked_looks if f["verdict"] == "up" else disliked_looks
+        if len(looks) < 5:
+            looks.append(" + ".join(names))
+    lines = []
+    if liked_looks:
+        lines.append("LIKED looks: " + " | ".join(liked_looks))
+    if disliked_looks:
+        lines.append("DISLIKED looks (do not repeat these combinations): " + " | ".join(disliked_looks))
+    # Pieces that are disliked clearly more than liked → steer away from them.
+    steer_away = [n for n, c in disliked_items.items() if c >= 2 and c > liked_items.get(n, 0)]
+    if steer_away:
+        lines.append("Pieces the user keeps rejecting (use sparingly, only if the request demands): " + ", ".join(steer_away))
+    favorites = [n for n, c in liked_items.items() if c >= 2 and c > disliked_items.get(n, 0)]
+    if favorites:
+        lines.append("Pieces the user keeps approving: " + ", ".join(favorites))
+    if avoided:
+        lines.append("Pieces the user explicitly banned from suggestions (already removed from wardrobe list): " + ", ".join(avoided))
+    return "\n".join(lines)
+
+
+async def _avoided_ids(user_id: str) -> set:
+    docs = await db.items.find({"user_id": user_id, "deleted_at": None, "preference": "avoid"}, {"_id": 0, "id": 1}).to_list(1000)
+    return {d["id"] for d in docs}
+
+
+@api_router.post("/stylist/feedback")
+async def stylist_feedback(body: FeedbackBody, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    if body.verdict not in ("up", "down"):
+        raise HTTPException(status_code=400, detail="verdict must be 'up' or 'down'")
+    if not body.item_ids:
+        raise HTTPException(status_code=400, detail="item_ids required")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["user_id"],
+        "verdict": body.verdict,
+        "item_ids": body.item_ids,
+        "outfit_name": body.outfit_name,
+        "prompt": body.prompt,
+        "created_at": now_utc(),
+    }
+    await db.feedback.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.get("/stylist/taste")
+async def stylist_taste(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    fb = await db.feedback.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(1000)
+    items = await db.items.find({"user_id": user["user_id"], "deleted_at": None}, {"_id": 0}).to_list(1000)
+    avoided = [clean_item(it) for it in items if it.get("preference") == "avoid"]
+    return {
+        "liked": sum(1 for f in fb if f["verdict"] == "up"),
+        "disliked": sum(1 for f in fb if f["verdict"] == "down"),
+        "avoided_items": avoided,
+    }
+
+
 @api_router.post("/stylist/generate")
 async def stylist_generate(body: StylistBody, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    items = await db.items.find({"user_id": user["user_id"], "deleted_at": None}, {"_id": 0}).to_list(1000)
-    if not items:
+    all_items = await db.items.find({"user_id": user["user_id"], "deleted_at": None}, {"_id": 0}).to_list(1000)
+    if not all_items:
         raise HTTPException(status_code=400, detail="Your closet is empty. Add items first.")
 
+    # Pieces the user marked "don't suggest" are hidden from the stylist (unless explicitly focused on).
+    items = [it for it in all_items if it.get("preference") != "avoid" or it["id"] == body.focus_item_id]
+    if not items:
+        raise HTTPException(status_code=400, detail="Every piece is marked 'don't suggest'. Allow some items first.")
+
     profile = await db.profiles.find_one({"user_id": user["user_id"]}, {"_id": 0}) or {}
+
+    # Never-worn = never logged as worn AND not part of any saved look.
+    outfit_docs = await db.outfits.find({"user_id": user["user_id"], "deleted_at": None}, {"_id": 0, "item_ids": 1}).to_list(1000)
+    in_looks = {i for o in outfit_docs for i in o.get("item_ids", [])}
+    unworn_ids = {it["id"] for it in items if not it.get("wear_count") and it["id"] not in in_looks}
+
     wardrobe = [{
         "id": it["id"], "name": it["name"], "category": it["category"], "color": it.get("color"),
         "formality": it.get("formality"), "fabric": it.get("fabric"), "season": it.get("season"),
+        "notes": it.get("notes") or None, "times_worn": int(it.get("wear_count") or 0),
+        "never_worn": it["id"] in unworn_ids,
     } for it in items]
 
     focus = None
     if body.focus_item_id:
         focus = next((it for it in wardrobe if it["id"] == body.focus_item_id), None)
 
+    taste = await taste_summary(user["user_id"], {it["id"]: it["name"] for it in all_items})
+
     system = (
         "You are StyleVault, an elite personal fashion stylist. You build outfits ONLY from the user's "
         "wardrobe provided as JSON. Consider color harmony, texture, formality and season. "
         f"User preferences: dress code {profile.get('dress_code')}, weather {profile.get('weather')}. "
+        "Pieces flagged never_worn are ones the user has not reached for yet: when they suit the request, prefer them "
+        "over heavily worn pieces so the wardrobe gets used evenly. Respect the user's taste feedback strictly. "
         "Return ONLY a JSON object with keys: "
         "outfit_name (string), item_ids (array of ids from the wardrobe that form the outfit), "
         "stylist_note (2-3 sentences explaining why colors and textures work), "
@@ -522,6 +637,14 @@ async def stylist_generate(body: StylistBody, authorization: Optional[str] = Hea
         "Every id in item_ids MUST exist in the wardrobe. No markdown, JSON only."
     )
     user_text = f"WARDROBE:\n{json.dumps(wardrobe)}\n\nREQUEST: {body.prompt}"
+    if taste:
+        user_text += f"\n\nUSER TASTE FEEDBACK (from thumbs up/down on past looks):\n{taste}"
+    if body.prefer_unworn and unworn_ids:
+        names = [w["name"] for w in wardrobe if w["never_worn"]]
+        user_text += (
+            f"\n\nThe user wants to finally wear pieces they've never worn: {json.dumps(names)}. "
+            "Build the look around at least one (ideally two) of these never_worn pieces and mention in the note which ones are getting their debut."
+        )
     if body.weather_context:
         user_text += f"\n\nCURRENT LOCAL WEATHER: {body.weather_context}. Factor this temperature/conditions into fabric weight, layering and season suitability."
     if focus:
@@ -536,7 +659,7 @@ async def stylist_generate(body: StylistBody, authorization: Optional[str] = Hea
             "If the wardrobe is too small to avoid overlap, keep the focus item (if any) but still change what you can and say so in the note."
         )
 
-    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"stylist-{uuid.uuid4().hex[:8]}", system_message=system).with_model("gemini", GEMINI_MODEL)
+    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"stylist-{uuid.uuid4().hex[:8]}", system_message=system).with_model("gemini", STYLIST_MODEL)
     try:
         raw = await chat.send_message(UserMessage(text=user_text))
     except Exception as e:
@@ -719,9 +842,128 @@ async def get_profile(authorization: Optional[str] = Header(None)):
 async def update_profile(body: ProfileBody, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
     updates = {k: v for k, v in body.dict().items() if v is not None}
+    if "age" in updates and not (5 <= updates["age"] <= 120):
+        raise HTTPException(status_code=400, detail="Age must be between 5 and 120")
     await db.profiles.update_one({"user_id": user["user_id"]}, {"$set": updates}, upsert=True)
     profile = await db.profiles.find_one({"user_id": user["user_id"]}, {"_id": 0})
     return profile
+
+
+@api_router.post("/profile/photo")
+async def upload_profile_photo(authorization: Optional[str] = Header(None), file: UploadFile = File(...)):
+    """Full-body photo used by 'Visualise on me'. Downscaled and stored privately; no background removal."""
+    user = await get_current_user(authorization)
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty image")
+    small = await run_in_threadpool(downscale_for_vision, raw, 1280)
+    path = f"{APP_NAME}/uploads/{user['user_id']}/profile/{uuid.uuid4()}.jpg"
+    await run_in_threadpool(put_object, path, small, "image/jpeg")
+    await db.profiles.update_one({"user_id": user["user_id"]}, {"$set": {"photo_path": path}}, upsert=True)
+    # A new photo invalidates previously generated try-on images.
+    await db.visualizations.delete_many({"user_id": user["user_id"]})
+    return {"photo_path": path}
+
+
+@api_router.delete("/profile/photo")
+async def delete_profile_photo(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    await db.profiles.update_one({"user_id": user["user_id"]}, {"$unset": {"photo_path": ""}})
+    await db.visualizations.delete_many({"user_id": user["user_id"]})
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Outfit visualisation (Nano Banana virtual try-on)
+# ---------------------------------------------------------------------------
+async def load_item_image(item: dict) -> Optional[bytes]:
+    try:
+        if item.get("storage_path"):
+            content, _ = await run_in_threadpool(get_object, item["storage_path"])
+            return content
+        if item.get("image_url"):
+            async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+                r = await client.get(item["image_url"])
+                r.raise_for_status()
+                return r.content
+    except Exception as e:
+        logger.warning(f"item image load failed for {item.get('id')}: {e}")
+    return None
+
+
+@api_router.post("/stylist/visualize")
+async def visualize_outfit(body: VisualizeBody, authorization: Optional[str] = Header(None)):
+    import base64
+
+    user = await get_current_user(authorization)
+    profile = await db.profiles.find_one({"user_id": user["user_id"]}, {"_id": 0}) or {}
+    if not profile.get("photo_path"):
+        raise HTTPException(status_code=400, detail="Add your photo in Profile first so the stylist can dress you.")
+    if not body.item_ids:
+        raise HTTPException(status_code=400, detail="item_ids required")
+
+    key = ",".join(sorted(body.item_ids))
+    cached = await db.visualizations.find_one({"user_id": user["user_id"], "key": key}, {"_id": 0})
+    if cached:
+        return {"storage_path": cached["storage_path"], "cached": True}
+
+    items = await db.items.find({"id": {"$in": body.item_ids}, "user_id": user["user_id"], "deleted_at": None}, {"_id": 0}).to_list(50)
+    if not items:
+        raise HTTPException(status_code=404, detail="Items not found")
+
+    try:
+        person, _ = await run_in_threadpool(get_object, profile["photo_path"])
+    except Exception:
+        raise HTTPException(status_code=400, detail="Your profile photo could not be loaded. Please upload it again.")
+
+    garment_images = await asyncio.gather(*[load_item_image(it) for it in items])
+    files = [ImageContent(image_base64=base64.b64encode(person).decode())]
+    described = []
+    for it, img in zip(items, garment_images):
+        if img:
+            files.append(ImageContent(image_base64=base64.b64encode(img).decode()))
+            described.append(f"{it['name']} ({it.get('color') or ''} {it['category'].lower()}, {it.get('fabric') or ''})".replace("  ", " "))
+        else:
+            described.append(f"{it['name']} ({it.get('color') or ''} {it['category'].lower()}) — no reference photo, render from description")
+
+    who = []
+    if profile.get("gender") and profile["gender"] != "Prefer not to say":
+        who.append(profile["gender"].lower())
+    if profile.get("age"):
+        who.append(f"around {profile['age']} years old")
+    who_txt = ", ".join(who) if who else "the person shown"
+
+    prompt = (
+        f"Image 1 is a photo of the user ({who_txt}). The following images are individual clothing pieces from their wardrobe: "
+        + "; ".join(described)
+        + ". Create ONE realistic full-body editorial fashion photograph of THIS SAME PERSON wearing ALL of these pieces together as one outfit. "
+        "Preserve their face, identity, skin tone, hair, body shape and proportions exactly. Use the garments' true colors, textures and cuts from the reference images. "
+        "Natural relaxed standing pose, soft studio lighting, plain light-grey seamless backdrop, no text, no logos, no extra people."
+    )
+
+    chat = (
+        LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"viz-{uuid.uuid4().hex[:8]}", system_message="You are a fashion photo compositing assistant.")
+        .with_model("gemini", IMAGE_MODEL)
+        .with_params(modalities=["image", "text"])
+    )
+    try:
+        text, images = await chat.send_message_multimodal_response(UserMessage(text=prompt, file_contents=files))
+    except Exception as e:
+        logger.error(f"visualize failed: {e}")
+        raise HTTPException(status_code=502, detail="Could not generate the try-on image right now.")
+    if not images:
+        logger.warning(f"visualize returned no image: {str(text)[:120]}")
+        raise HTTPException(status_code=502, detail="The image model returned no picture. Try again.")
+
+    img_bytes = base64.b64decode(images[0]["data"])
+    ext = "png" if "png" in (images[0].get("mime_type") or "") else "jpg"
+    path = f"{APP_NAME}/uploads/{user['user_id']}/looks/{uuid.uuid4()}.{ext}"
+    await run_in_threadpool(put_object, path, img_bytes, images[0].get("mime_type") or "image/png")
+    await db.visualizations.insert_one({
+        "id": str(uuid.uuid4()), "user_id": user["user_id"], "key": key, "item_ids": body.item_ids,
+        "outfit_name": body.outfit_name, "storage_path": path, "created_at": now_utc(),
+    })
+    return {"storage_path": path, "cached": False}
 
 
 @api_router.get("/")

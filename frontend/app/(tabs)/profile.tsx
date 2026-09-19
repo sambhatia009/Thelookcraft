@@ -1,10 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
-import { ScrollView, Text, View } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api } from "@/src/api";
+import { api, Profile as ProfileType } from "@/src/api";
 import { useAuth } from "@/src/auth";
+import { AboutYou } from "@/src/components/about-you";
 import { InsightsPanel } from "@/src/components/insights";
 import { usesNativeTabs } from "@/src/navigation";
 import { useToast } from "@/src/toast";
@@ -25,7 +27,7 @@ export default function Profile() {
 
   const { data: profile } = useQuery({ queryKey: ["profile"], queryFn: () => api.profile() });
 
-  const update = async (patch: any) => {
+  const update = async (patch: Partial<ProfileType>) => {
     try {
       await api.updateProfile(patch);
       qc.invalidateQueries({ queryKey: ["profile"] });
@@ -50,7 +52,7 @@ export default function Profile() {
       </View>
       <View style={styles.hairlineStrong} />
 
-      <ScrollView contentContainerStyle={{ paddingBottom: bottomChrome + spacing.xl }}>
+      <KeyboardAwareScrollView contentContainerStyle={{ paddingBottom: bottomChrome + spacing.xl }} bottomOffset={20} keyboardShouldPersistTaps="handled">
         <View style={styles.idRow}>
           <View style={styles.avatar}>
             {user?.picture ? (
@@ -73,6 +75,10 @@ export default function Profile() {
             </View>
           ))}
         </View>
+
+        <Section title="ABOUT YOU">
+          <AboutYou profile={profile} onUpdate={update} />
+        </Section>
 
         <Section title="WARDROBE INSIGHTS">
           <InsightsPanel />
@@ -106,7 +112,7 @@ export default function Profile() {
           <Button title="Sign Out" variant="outline" onPress={signOut} testID="sign-out-btn" />
         </View>
         <Text style={styles.themeNote}>THEME FOLLOWS YOUR DEVICE · LIGHT & DARK</Text>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </View>
   );
 }

@@ -72,6 +72,24 @@ export type Item = {
   storage_path?: string | null;
   wear_count?: number;
   last_worn_at?: string | null;
+  notes?: string;
+  preference?: "avoid" | "neutral" | null;
+};
+
+export type Profile = {
+  user_id?: string;
+  name?: string;
+  email?: string;
+  picture?: string | null;
+  dress_code?: string;
+  body_fit?: string;
+  color_palette?: string[];
+  weather?: string;
+  gender?: string;
+  age?: number;
+  photo_path?: string | null;
+  counts?: Record<string, number>;
+  total_items?: number;
 };
 
 export type Outfit = {
@@ -120,21 +138,26 @@ export const api = {
     req(`/items/${id}`, { method: "PATCH", json: patch }),
   deleteItem: (id: string) => req(`/items/${id}`, { method: "DELETE" }),
 
-  stylist: (
-    prompt: string,
-    focus_item_id?: string | null,
-    weather_context?: string | null,
-    avoid_item_ids?: string[] | null,
-  ): Promise<OutfitResult> =>
+  stylist: (payload: {
+    prompt: string;
+    focus_item_id?: string | null;
+    weather_context?: string | null;
+    avoid_item_ids?: string[] | null;
+    prefer_unworn?: boolean;
+  }): Promise<OutfitResult> =>
     req("/stylist/generate", {
       method: "POST",
       json: {
-        prompt,
-        focus_item_id: focus_item_id || null,
-        weather_context: weather_context || null,
-        avoid_item_ids: avoid_item_ids && avoid_item_ids.length ? avoid_item_ids : null,
+        prompt: payload.prompt,
+        focus_item_id: payload.focus_item_id || null,
+        weather_context: payload.weather_context || null,
+        avoid_item_ids: payload.avoid_item_ids && payload.avoid_item_ids.length ? payload.avoid_item_ids : null,
+        prefer_unworn: !!payload.prefer_unworn,
       },
     }),
+  feedback: (payload: { verdict: "up" | "down"; item_ids: string[]; outfit_name?: string; prompt?: string }) =>
+    req("/stylist/feedback", { method: "POST", json: payload }),
+  taste: (): Promise<{ liked: number; disliked: number; avoided_items: Item[] }> => req("/stylist/taste"),
 
   outfits: (): Promise<Outfit[]> => req("/outfits"),
   saveOutfit: (payload: { title: string; item_ids: string[]; stylist_note?: string; occasion?: string }) =>
@@ -146,13 +169,24 @@ export const api = {
   wearItem: (id: string): Promise<Item> => req(`/items/${id}/wear`, { method: "POST" }),
   insights: (): Promise<Insights> => req("/insights"),
 
-  profile: () => req("/profile"),
-  updateProfile: (patch: any) => req("/profile", { method: "PUT", json: patch }),
+  profile: (): Promise<Profile> => req("/profile"),
+  updateProfile: (patch: Partial<Profile>): Promise<Profile> => req("/profile", { method: "PUT", json: patch }),
+  deleteProfilePhoto: () => req("/profile/photo", { method: "DELETE" }),
+  visualize: (item_ids: string[], outfit_name?: string): Promise<{ storage_path: string; cached: boolean }> =>
+    req("/stylist/visualize", { method: "POST", json: { item_ids, outfit_name } }),
 };
 
 export async function uploadItemImage(uri: string) {
+  return uploadImage("/api/items/upload", uri) as Promise<Item>;
+}
+
+export async function uploadProfilePhoto(uri: string) {
+  return uploadImage("/api/profile/photo", uri) as Promise<{ photo_path: string }>;
+}
+
+async function uploadImage(endpoint: string, uri: string) {
   const form = new FormData();
-  const name = `item_${Date.now()}.jpg`;
+  const name = `photo_${Date.now()}.jpg`;
   const { Platform } = require("react-native");
   if (Platform.OS === "web") {
     const blob = await (await fetch(uri)).blob();
@@ -166,7 +200,7 @@ export async function uploadItemImage(uri: string) {
   }
   const headers: Record<string, string> = {};
   if (inMemoryToken) headers["Authorization"] = `Bearer ${inMemoryToken}`;
-  const res = await fetch(`${BACKEND}/api/items/upload`, { method: "POST", headers, body: form });
+  const res = await fetch(`${BACKEND}${endpoint}`, { method: "POST", headers, body: form });
   if (!res.ok) {
     let detail = "Upload failed";
     try {
@@ -174,5 +208,5 @@ export async function uploadItemImage(uri: string) {
     } catch {}
     throw new ApiError(res.status, detail);
   }
-  return res.json() as Promise<Item>;
+  return res.json();
 }

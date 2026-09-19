@@ -12,11 +12,26 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Image } from "expo-image";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
-import { ArrowsLeftRight, ArrowUp, Paperclip, Plus, ShoppingBag, Sun, X } from "phosphor-react-native";
+import {
+  ArrowsLeftRight,
+  ArrowUp,
+  DotsThree,
+  Paperclip,
+  Plus,
+  Prohibit,
+  ShoppingBag,
+  Sparkle,
+  Sun,
+  ThumbsDown,
+  ThumbsUp,
+  UserFocus,
+  X,
+} from "phosphor-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, Item, OutfitResult } from "@/src/api";
+import { api, imageUri, Item, OutfitResult } from "@/src/api";
 import { ItemThumb } from "@/src/components/item-thumb";
 import { OccasionSheet } from "@/src/components/occasion-sheet";
 import { usesNativeTabs } from "@/src/navigation";
@@ -34,6 +49,9 @@ type ResultMsg = {
   id: string;
   prompt: string;
   focusId?: string | null;
+  feedback?: "up" | "down";
+  vizPath?: string | null;
+  vizLoading?: boolean;
 };
 type Msg = { kind: "user"; text: string; id: string } | ResultMsg;
 
@@ -43,6 +61,7 @@ const QUICK_PROMPTS = [
   "Date night in autumn",
   "Build a smart casual look",
 ];
+const UNWORN_PROMPT = "Build a look around pieces I haven't worn yet";
 
 export default function Stylist() {
   const insets = useSafeAreaInsets();
@@ -59,13 +78,18 @@ export default function Stylist() {
   const [pickerOpen, setPickerOpen] = useState(false);
   // Which look is being edited via the item picker: swap one piece (itemId) or add a piece (itemId null).
   const [editTarget, setEditTarget] = useState<{ msgId: string; itemId: string | null } | null>(null);
+  // Piece the user tapped inside a look → action sheet (swap / remove / never suggest).
+  const [pieceTarget, setPieceTarget] = useState<{ msgId: string; item: Item } | null>(null);
   const [tagging, setTagging] = useState<ResultMsg | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const { weather, loading: weatherLoading, enabled: weatherEnabled, enable: enableWeather, disable: disableWeather } = useWeather();
 
   const { data: items } = useQuery({ queryKey: ["items", "All"], queryFn: () => api.items("All") });
   const { data: outfits } = useQuery({ queryKey: ["outfits"], queryFn: () => api.outfits() });
+  const { data: insights } = useQuery({ queryKey: ["insights"], queryFn: () => api.insights() });
+  const { data: profile } = useQuery({ queryKey: ["profile"], queryFn: () => api.profile() });
   const customTags = Array.from(new Set((outfits || []).map((o) => o.occasion || "").filter(Boolean)));
+  const unwornCount = insights?.never_worn_count ?? 0;
 
   const pendingFocusId = usePendingStylistFocus();
   const focusId = pendingFocusId || params.focusId;
@@ -86,12 +110,15 @@ export default function Stylist() {
       focusId,
       weatherLabel,
       avoidIds,
+      preferUnworn,
     }: {
       prompt: string;
       focusId?: string | null;
       weatherLabel?: string | null;
       avoidIds?: string[];
-    }) => api.stylist(prompt, focusId, weatherLabel, avoidIds),
+      preferUnworn?: boolean;
+    }) =>
+      api.stylist({ prompt, focus_item_id: focusId, weather_context: weatherLabel, avoid_item_ids: avoidIds, prefer_unworn: preferUnworn }),
     onSuccess: (result, vars) => {
       setMessages((m) => [...m, { kind: "result", result, id: `${Date.now()}`, prompt: vars.prompt, focusId: vars.focusId }]);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
@@ -101,19 +128,19 @@ export default function Stylist() {
 
   const pushUser = (text: string) => setMessages((m) => [...m, { kind: "user", text, id: `u${Date.now()}` }]);
 
-  const send = (text: string) => {
+  const send = (text: string, opts?: { preferUnworn?: boolean }) => {
     const prompt = text.trim();
     if (!prompt) return;
     pushUser(focus ? `${prompt}  ·  [${focus.name}]` : prompt);
     setInput("");
-    generate.mutate({ prompt, focusId: focus?.id, weatherLabel: weather?.label });
+    generate.mutate({ prompt, focusId: focus?.id, weatherLabel: weather?.label, preferUnworn: opts?.preferUnworn });
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   };
 
   /** Re-run the SAME request as the given look, asking the stylist to avoid repeating its pieces. */
-  const tryAnother = (msg: ResultMsg) => {
+  const tryAnother = (msg: ResultMsg, label = "Try another look") => {
     if (generate.isPending) return;
-    pushUser("Try another look");
+    pushUser(label);
     // Avoid every combination already shown for this prompt, not just the last one.
     const seen = messages.filter((x): x is ResultMsg => x.kind === "result" && x.prompt === msg.prompt).flatMap((x) => x.result.item_ids);
     generate.mutate({
@@ -121,8 +148,64 @@ export default function Stylist() {
       focusId: msg.focusId,
       weatherLabel: weather?.label,
       avoidIds: Array.from(new Set([...seen, ...msg.result.item_ids])),
+      preferUnworn: msg.prompt === UNWORN_PROMPT,
     });
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+  };
+
+  const patchMsg = (msgId: string, patch: Partial<ResultMsg>) =>
+    setMessages((m) => m.map((x) => (x.kind === "result" && x.id === msgId ? { ...x, ...patch } : x)));
+
+  /** 👍 / 👎 — recorded for the stylist's taste model; a 👎 immediately fetches a different look. */
+  const rate = async (msg: ResultMsg, verdict: "up" | "down") => {
+    if (msg.feedback === verdict) return;
+    patchMsg(msg.id, { feedback: verdict });
+    try {
+      await api.feedback({ verdict, item_ids: msg.result.item_ids, outfit_name: msg.result.outfit_name, prompt: msg.prompt });
+      qc.invalidateQueries({ queryKey: ["taste"] });
+      if (verdict === "up") show("Noted — I'll lean into this style", "success");
+      else {
+        show("Noted — finding you something different", "default");
+        tryAnother(msg, "Not my style — show me something else");
+      }
+    } catch {
+      patchMsg(msg.id, { feedback: undefined });
+      show("Could not save feedback", "error");
+    }
+  };
+
+  /** "Don't suggest this again": hides the piece from the stylist and drops it from the current look. */
+  const banPiece = async (msgId: string, item: Item) => {
+    try {
+      await api.updateItem(item.id, { preference: "avoid" });
+      qc.invalidateQueries({ queryKey: ["items"] });
+      updateLook(msgId, (its) => (its.length > 1 ? its.filter((i) => i.id !== item.id) : its));
+      show(`${item.name} won't be suggested again`, "success", {
+        label: "Undo",
+        onPress: async () => {
+          await api.updateItem(item.id, { preference: "neutral" }).catch(() => {});
+          qc.invalidateQueries({ queryKey: ["items"] });
+        },
+      });
+    } catch {
+      show("Could not update preference", "error");
+    }
+  };
+
+  /** Nano Banana try-on: renders the look on the user's profile photo. */
+  const visualize = async (msg: ResultMsg) => {
+    if (!profile?.photo_path) {
+      show("Add your photo in Profile first", "error", { label: "Go", onPress: () => router.push("/(tabs)/profile") });
+      return;
+    }
+    patchMsg(msg.id, { vizLoading: true });
+    try {
+      const res = await api.visualize(msg.result.item_ids, msg.result.outfit_name);
+      patchMsg(msg.id, { vizPath: res.storage_path, vizLoading: false });
+    } catch (e: any) {
+      patchMsg(msg.id, { vizLoading: false });
+      show(e?.message || "Could not create the try-on image", "error");
+    }
   };
 
   const dismiss = (msgId: string) => {
@@ -249,6 +332,20 @@ export default function Stylist() {
       >
         {empty && (
           <View style={styles.promptsWrap}>
+            {unwornCount > 0 && (
+              <Pressable style={styles.nudge} onPress={() => send(UNWORN_PROMPT, { preferUnworn: true })} testID="unworn-nudge">
+                <View style={styles.nudgeIcon}>
+                  <Sparkle color={colors.onBrandPrimary} size={16} weight="fill" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.nudgeTitle}>
+                    {unwornCount} {unwornCount === 1 ? "PIECE" : "PIECES"} NEVER WORN
+                  </Text>
+                  <Text style={styles.nudgeSub}>Let the stylist build a look that finally gets them out of the closet.</Text>
+                </View>
+                <Text style={styles.nudgeCta}>STYLE THEM →</Text>
+              </Pressable>
+            )}
             <Text style={styles.promptsLabel}>TRY ASKING</Text>
             {QUICK_PROMPTS.map((p) => (
               <Pressable key={p} testID={`quick-${p}`} style={styles.promptChip} onPress={() => send(p)}>
@@ -278,18 +375,17 @@ export default function Stylist() {
               key={m.id}
               msg={m}
               busy={generate.isPending}
+              canVisualize={!!profile?.photo_path}
               onSave={() => setTagging(m)}
               onRetry={() => tryAnother(m)}
               onDismiss={() => dismiss(m.id)}
-              onSwap={(itemId) => {
-                setEditTarget({ msgId: m.id, itemId });
-                setPickerOpen(true);
-              }}
-              onRemove={(itemId) => removeFromLook(m.id, itemId)}
+              onPiece={(item) => setPieceTarget({ msgId: m.id, item })}
               onAdd={() => {
                 setEditTarget({ msgId: m.id, itemId: null });
                 setPickerOpen(true);
               }}
+              onRate={(v) => rate(m, v)}
+              onVisualize={() => visualize(m)}
               onAddMissing={() => router.push("/add-item")}
               onShop={shop}
             />
@@ -370,6 +466,31 @@ export default function Stylist() {
           if (msg) saveOutfit(msg, occasion);
         }}
       />
+
+      <PieceSheet
+        target={pieceTarget}
+        canRemove={(() => {
+          const m = messages.find((x): x is ResultMsg => x.kind === "result" && x.id === pieceTarget?.msgId);
+          return !!m && m.result.items.length > 1;
+        })()}
+        onClose={() => setPieceTarget(null)}
+        onSwap={() => {
+          if (!pieceTarget) return;
+          setEditTarget({ msgId: pieceTarget.msgId, itemId: pieceTarget.item.id });
+          setPieceTarget(null);
+          setPickerOpen(true);
+        }}
+        onRemove={() => {
+          if (!pieceTarget) return;
+          removeFromLook(pieceTarget.msgId, pieceTarget.item.id);
+          setPieceTarget(null);
+        }}
+        onBan={() => {
+          if (!pieceTarget) return;
+          banPiece(pieceTarget.msgId, pieceTarget.item);
+          setPieceTarget(null);
+        }}
+      />
     </View>
   );
 }
@@ -377,36 +498,40 @@ export default function Stylist() {
 function ResultCard({
   msg,
   busy,
+  canVisualize,
   onSave,
   onRetry,
   onDismiss,
-  onSwap,
-  onRemove,
+  onPiece,
   onAdd,
+  onRate,
+  onVisualize,
   onAddMissing,
   onShop,
 }: {
   msg: ResultMsg;
   busy: boolean;
+  canVisualize: boolean;
   onSave: () => void;
   onRetry: () => void;
   onDismiss: () => void;
-  onSwap: (itemId: string) => void;
-  onRemove: (itemId: string) => void;
+  onPiece: (item: Item) => void;
   onAdd: () => void;
+  onRate: (verdict: "up" | "down") => void;
+  onVisualize: () => void;
   onAddMissing: () => void;
   onShop: (q: string) => void;
 }) {
   const styles = useStyles();
   const { colors } = useTheme();
   const r = msg.result;
-  const canRemove = r.items.length > 1;
+  const vizUri = msg.vizPath ? imageUri({ storage_path: msg.vizPath }) : undefined;
   return (
     <View style={styles.resultCard} testID="outfit-result">
       <View style={styles.resultHead}>
         <View style={{ flex: 1 }}>
           <Text style={styles.resultName}>{r.outfit_name.toUpperCase()}</Text>
-          <Text style={styles.resultHint}>{msg.edited ? "EDITED · TAP A PIECE TO SWAP" : "TAP A PIECE TO SWAP IT"}</Text>
+          <Text style={styles.resultHint}>{msg.edited ? "EDITED · TAP A PIECE FOR OPTIONS" : "TAP A PIECE TO SWAP, REMOVE OR BAN IT"}</Text>
         </View>
         <Pressable onPress={onDismiss} style={styles.dismissBtn} testID="dismiss-result-btn" hitSlop={6}>
           <X color={colors.onSurface} size={18} weight="bold" />
@@ -415,17 +540,12 @@ function ResultCard({
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.compositeRow}>
         {r.items.map((it) => (
           <View key={it.id} style={styles.compositeItem}>
-            <Pressable style={styles.compositeThumb} onPress={() => onSwap(it.id)} testID={`swap-${it.id}`}>
+            <Pressable style={styles.compositeThumb} onPress={() => onPiece(it)} testID={`piece-${it.id}`}>
               <ItemThumb item={it} />
               <View style={styles.swapBadge}>
-                <ArrowsLeftRight color={colors.onBrandPrimary} size={12} weight="bold" />
+                <DotsThree color={colors.onBrandPrimary} size={14} weight="bold" />
               </View>
             </Pressable>
-            {canRemove && (
-              <Pressable style={styles.removeBadge} onPress={() => onRemove(it.id)} testID={`remove-${it.id}`} hitSlop={6}>
-                <X color={colors.onBrandPrimary} size={12} weight="bold" />
-              </Pressable>
-            )}
             <Text numberOfLines={1} style={styles.compositeLabel}>
               {it.name}
             </Text>
@@ -436,6 +556,27 @@ function ResultCard({
           <Text style={styles.addTileText}>ADD PIECE</Text>
         </Pressable>
       </ScrollView>
+
+      {/* Try-on visual */}
+      {vizUri ? (
+        <View style={styles.vizBox} testID="viz-image">
+          <Image source={{ uri: vizUri }} style={styles.vizImage} contentFit="cover" transition={300} />
+          <Text style={styles.vizCaption}>VISUALISED ON YOU · AI RENDER</Text>
+        </View>
+      ) : (
+        <Pressable
+          style={[styles.vizBtn, msg.vizLoading && { opacity: 0.6 }]}
+          onPress={onVisualize}
+          disabled={msg.vizLoading}
+          testID="visualize-btn"
+        >
+          {msg.vizLoading ? <ActivityIndicator color={colors.onSurface} size="small" /> : <UserFocus color={colors.onSurface} size={18} weight="bold" />}
+          <Text style={styles.vizBtnText}>
+            {msg.vizLoading ? "DRESSING YOU… ~20 SEC" : canVisualize ? "VISUALISE ON ME" : "VISUALISE ON ME · ADD YOUR PHOTO IN PROFILE"}
+          </Text>
+        </Pressable>
+      )}
+
       {!!r.stylist_note && (
         <View style={styles.noteBox}>
           <Text style={styles.noteLabel}>STYLIST NOTE</Text>
@@ -448,6 +589,31 @@ function ResultCard({
           <Text style={styles.shopText}>SHOP THE GAP: {r.missing_suggestion.toUpperCase()}</Text>
         </Pressable>
       )}
+
+      {/* Feedback */}
+      <View style={styles.feedbackRow}>
+        <Text style={styles.feedbackLabel}>{msg.feedback ? (msg.feedback === "up" ? "YOU LIKED THIS" : "NOT YOUR STYLE — NOTED") : "RATE THIS LOOK"}</Text>
+        <View style={{ flexDirection: "row", gap: spacing.xs }}>
+          <Pressable
+            style={[styles.thumbBtn, msg.feedback === "up" && styles.thumbBtnOn]}
+            onPress={() => onRate("up")}
+            testID="feedback-up-btn"
+            hitSlop={4}
+          >
+            <ThumbsUp color={msg.feedback === "up" ? colors.onBrandPrimary : colors.onSurface} size={18} weight={msg.feedback === "up" ? "fill" : "bold"} />
+          </Pressable>
+          <Pressable
+            style={[styles.thumbBtn, msg.feedback === "down" && styles.thumbBtnOn]}
+            onPress={() => onRate("down")}
+            disabled={busy}
+            testID="feedback-down-btn"
+            hitSlop={4}
+          >
+            <ThumbsDown color={msg.feedback === "down" ? colors.onBrandPrimary : colors.onSurface} size={18} weight={msg.feedback === "down" ? "fill" : "bold"} />
+          </Pressable>
+        </View>
+      </View>
+
       <View style={styles.actions}>
         <Button
           title={msg.saved ? "Saved ✓" : "Save Outfit"}
@@ -462,6 +628,70 @@ function ResultCard({
         <Text style={styles.addMissingText}>ADD MISSING ITEM</Text>
       </Pressable>
     </View>
+  );
+}
+
+function PieceSheet({
+  target,
+  canRemove,
+  onClose,
+  onSwap,
+  onRemove,
+  onBan,
+}: {
+  target: { msgId: string; item: Item } | null;
+  canRemove: boolean;
+  onClose: () => void;
+  onSwap: () => void;
+  onRemove: () => void;
+  onBan: () => void;
+}) {
+  const styles = useStyles();
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const item = target?.item;
+  return (
+    <Modal visible={!!target} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.sheetBackdrop} onPress={onClose} />
+      <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.lg }]} testID="piece-sheet">
+        <View style={styles.sheetHeader}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, flex: 1 }}>
+            {item && (
+              <View style={styles.pieceThumb}>
+                <ItemThumb item={item} />
+              </View>
+            )}
+            <Text style={styles.sheetTitle} numberOfLines={1}>
+              {(item?.name || "").toUpperCase()}
+            </Text>
+          </View>
+          <Pressable onPress={onClose} testID="piece-close" hitSlop={8}>
+            <X color={colors.onSurface} size={22} weight="bold" />
+          </Pressable>
+        </View>
+        <Pressable style={styles.pieceAction} onPress={onSwap} testID="piece-swap-btn">
+          <ArrowsLeftRight color={colors.onSurface} size={20} weight="bold" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.pieceActionTitle}>SWAP FOR ANOTHER PIECE</Text>
+            <Text style={styles.pieceActionSub}>Pick a replacement from your closet.</Text>
+          </View>
+        </Pressable>
+        <Pressable style={[styles.pieceAction, !canRemove && { opacity: 0.4 }]} onPress={onRemove} disabled={!canRemove} testID="piece-remove-btn">
+          <X color={colors.onSurface} size={20} weight="bold" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.pieceActionTitle}>REMOVE FROM THIS LOOK</Text>
+            <Text style={styles.pieceActionSub}>{canRemove ? "Keep the rest of the outfit." : "A look needs at least one piece."}</Text>
+          </View>
+        </Pressable>
+        <Pressable style={styles.pieceAction} onPress={onBan} testID="piece-ban-btn">
+          <Prohibit color={colors.error} size={20} weight="bold" />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.pieceActionTitle, { color: colors.error }]}>DON&apos;T SUGGEST THIS AGAIN</Text>
+            <Text style={styles.pieceActionSub}>The stylist will stop using this piece. You can undo in the item&apos;s page.</Text>
+          </View>
+        </Pressable>
+      </View>
+    </Modal>
   );
 }
 
@@ -553,10 +783,27 @@ const useStyles = makeStyles((c) => ({
   compositeItem: { width: 120, gap: spacing.sm, position: "relative" },
   compositeThumb: { width: 120, height: 140, backgroundColor: c.surfaceTertiary, borderWidth: 1, borderColor: c.border },
   swapBadge: { position: "absolute", right: 6, bottom: 6, width: 22, height: 22, alignItems: "center", justifyContent: "center", backgroundColor: c.brandPrimary },
-  removeBadge: { position: "absolute", top: 6, right: 6, width: 24, height: 24, alignItems: "center", justifyContent: "center", backgroundColor: c.brandPrimary },
   addTile: { width: 120, height: 140, alignItems: "center", justifyContent: "center", gap: spacing.xs, borderWidth: 1, borderColor: c.borderStrong, borderStyle: "dashed", backgroundColor: c.surfaceTertiary },
   addTileText: { fontSize: 10, letterSpacing: 1.5, fontWeight: "800", color: c.onSurface },
   compositeLabel: { fontSize: fontSize.sm, color: c.onSurface, fontWeight: "600" },
+  vizBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, marginHorizontal: spacing.lg, marginBottom: spacing.lg, height: 48, borderWidth: 1, borderColor: c.borderStrong, backgroundColor: c.surfaceTertiary },
+  vizBtnText: { fontSize: 11, fontWeight: "800", letterSpacing: 1, color: c.onSurface },
+  vizBox: { marginHorizontal: spacing.lg, marginBottom: spacing.lg, borderWidth: 1, borderColor: c.borderStrong },
+  vizImage: { width: "100%", aspectRatio: 3 / 4, backgroundColor: c.surfaceTertiary },
+  vizCaption: { padding: spacing.sm, fontSize: 9, letterSpacing: 2, fontWeight: "800", color: c.muted, textAlign: "center" },
+  feedbackRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginHorizontal: spacing.lg, marginBottom: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: c.border },
+  feedbackLabel: { fontSize: 10, letterSpacing: 1.5, fontWeight: "800", color: c.muted },
+  thumbBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: c.borderStrong },
+  thumbBtnOn: { backgroundColor: c.brandPrimary, borderColor: c.brandPrimary },
+  nudge: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, borderWidth: 1, borderColor: c.brandPrimary, backgroundColor: c.surface },
+  nudgeIcon: { width: 36, height: 36, alignItems: "center", justifyContent: "center", backgroundColor: c.brandPrimary },
+  nudgeTitle: { fontSize: fontSize.sm, fontWeight: "900", letterSpacing: 1, color: c.onSurface },
+  nudgeSub: { fontSize: fontSize.sm, color: c.muted, marginTop: 2, lineHeight: 17 },
+  nudgeCta: { fontSize: 10, fontWeight: "900", letterSpacing: 1, color: c.onSurface },
+  pieceThumb: { width: 40, height: 40, backgroundColor: c.surfaceTertiary, borderWidth: 1, borderColor: c.border },
+  pieceAction: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, borderTopWidth: 1, borderTopColor: c.border, minHeight: 64 },
+  pieceActionTitle: { fontSize: fontSize.sm, fontWeight: "800", letterSpacing: 1, color: c.onSurface },
+  pieceActionSub: { fontSize: fontSize.sm, color: c.muted, marginTop: 2 },
   noteBox: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, gap: spacing.xs },
   noteLabel: { fontSize: fontSize.sm, letterSpacing: 2, color: c.muted },
   noteText: { fontSize: fontSize.base, color: c.onSurface, lineHeight: 21 },
