@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -12,13 +13,14 @@ import {
   View,
 } from "react-native";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
-import { ArrowUp, Paperclip, X } from "phosphor-react-native";
+import { ArrowUp, Paperclip, ShoppingBag, Sun, X } from "phosphor-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, Item, OutfitResult } from "@/src/api";
 import { ItemThumb } from "@/src/components/item-thumb";
 import { usesNativeTabs } from "@/src/navigation";
 import { useToast } from "@/src/toast";
+import { useWeather } from "@/src/weather";
 import { fontSize, makeStyles, spacing, useTheme } from "@/src/theme";
 import { Button } from "@/src/ui";
 
@@ -47,6 +49,7 @@ export default function Stylist() {
   const [focus, setFocus] = useState<Item | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const { weather, loading: weatherLoading, enable: enableWeather } = useWeather();
 
   const { data: items } = useQuery({ queryKey: ["items", "All"], queryFn: () => api.items("All") });
 
@@ -58,7 +61,8 @@ export default function Stylist() {
   }, [params.focusId, items]);
 
   const generate = useMutation({
-    mutationFn: ({ prompt, focusId }: { prompt: string; focusId?: string | null }) => api.stylist(prompt, focusId),
+    mutationFn: ({ prompt, focusId, weatherLabel }: { prompt: string; focusId?: string | null; weatherLabel?: string | null }) =>
+      api.stylist(prompt, focusId, weatherLabel),
     onSuccess: (result) => {
       setMessages((m) => [...m, { kind: "result", result, id: `${Date.now()}` }]);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
@@ -72,13 +76,24 @@ export default function Stylist() {
     const label = focus ? `${prompt}  ·  [${focus.name}]` : prompt;
     setMessages((m) => [...m, { kind: "user", text: label }]);
     setInput("");
-    generate.mutate({ prompt, focusId: focus?.id });
+    generate.mutate({ prompt, focusId: focus?.id, weatherLabel: weather?.label });
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   };
 
   const retry = (prompt: string) => {
     setMessages((m) => [...m, { kind: "user", text: prompt }]);
-    generate.mutate({ prompt, focusId: focus?.id });
+    generate.mutate({ prompt, focusId: focus?.id, weatherLabel: weather?.label });
+  };
+
+  const shop = (q: string) => {
+    const url = `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(q)}`;
+    Linking.openURL(url).catch(() => show("Could not open shopping", "error"));
+  };
+
+  const toggleWeather = async () => {
+    const w = await enableWeather();
+    if (w) show(`Weather synced · ${w.label}`, "success");
+    else show("Location permission needed for weather", "error");
   };
 
   const saveOutfit = async (msg: Extract<Msg, { kind: "result" }>) => {
@@ -102,8 +117,16 @@ export default function Stylist() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>STYLIST</Text>
-        <Text style={styles.sub}>AI-CURATED FROM YOUR CLOSET</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>STYLIST</Text>
+          <Text style={styles.sub}>AI-CURATED FROM YOUR CLOSET</Text>
+        </View>
+        <Pressable style={styles.weatherChip} onPress={toggleWeather} testID="weather-chip">
+          <Sun color={colors.onSurface} size={16} weight="bold" />
+          <Text style={styles.weatherText}>
+            {weatherLoading ? "SYNCING…" : weather ? weather.label : "ENABLE WEATHER"}
+          </Text>
+        </Pressable>
       </View>
       <View style={styles.hairline} />
 
@@ -133,7 +156,7 @@ export default function Stylist() {
               <Text style={styles.userText}>{m.text}</Text>
             </View>
           ) : (
-            <ResultCard key={m.id} msg={m} onSave={() => saveOutfit(m)} onRetry={() => retry(QUICK_PROMPTS[0])} onAddMissing={() => router.push("/add-item")} />
+            <ResultCard key={m.id} msg={m} onSave={() => saveOutfit(m)} onRetry={() => retry(QUICK_PROMPTS[0])} onAddMissing={() => router.push("/add-item")} onShop={shop} />
           )
         )}
 
@@ -204,13 +227,16 @@ function ResultCard({
   onSave,
   onRetry,
   onAddMissing,
+  onShop,
 }: {
   msg: Extract<Msg, { kind: "result" }>;
   onSave: () => void;
   onRetry: () => void;
   onAddMissing: () => void;
+  onShop: (q: string) => void;
 }) {
   const styles = useStyles();
+  const { colors } = useTheme();
   const r = msg.result;
   return (
     <View style={styles.resultCard} testID="outfit-result">
@@ -234,7 +260,10 @@ function ResultCard({
         </View>
       )}
       {!!r.missing_suggestion && (
-        <Text style={styles.missing}>+ Consider adding: {r.missing_suggestion}</Text>
+        <Pressable style={styles.shopLink} onPress={() => onShop(r.missing_suggestion)} testID="shop-missing-btn">
+          <ShoppingBag color={colors.onSurface} size={18} weight="bold" />
+          <Text style={styles.shopText}>SHOP THE GAP: {r.missing_suggestion.toUpperCase()}</Text>
+        </Pressable>
       )}
       <View style={styles.actions}>
         <Button
@@ -300,9 +329,11 @@ function ItemPicker({
 
 const useStyles = makeStyles((c) => ({
   container: { flex: 1, backgroundColor: c.surface },
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md },
+  header: { flexDirection: "row", alignItems: "flex-end", paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md, gap: spacing.md },
   title: { fontSize: fontSize["3xl"], fontWeight: "900", letterSpacing: 1, color: c.onSurface },
   sub: { fontSize: fontSize.sm, color: c.muted, letterSpacing: 1, marginTop: 2 },
+  weatherChip: { flexDirection: "row", alignItems: "center", gap: spacing.xs, borderWidth: 1, borderColor: c.borderStrong, paddingHorizontal: spacing.md, height: 36 },
+  weatherText: { fontSize: 11, fontWeight: "800", letterSpacing: 1, color: c.onSurface },
   hairline: { height: 1, backgroundColor: c.borderStrong },
 
   promptsWrap: { gap: spacing.md, marginTop: spacing.xl },
@@ -326,6 +357,8 @@ const useStyles = makeStyles((c) => ({
   noteLabel: { fontSize: fontSize.sm, letterSpacing: 2, color: c.muted },
   noteText: { fontSize: fontSize.base, color: c.onSurface, lineHeight: 21 },
   missing: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, color: c.muted, fontSize: fontSize.base, fontStyle: "italic" },
+  shopLink: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginHorizontal: spacing.lg, marginBottom: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: c.borderStrong, backgroundColor: c.surfaceTertiary },
+  shopText: { flex: 1, fontSize: 11, fontWeight: "800", letterSpacing: 1, color: c.onSurface },
   actions: { flexDirection: "row", paddingHorizontal: spacing.lg, gap: spacing.sm },
   addMissing: { padding: spacing.md, alignItems: "center", borderTopWidth: 1, borderTopColor: c.border, marginTop: spacing.md },
   addMissingText: { fontSize: fontSize.sm, letterSpacing: 2, color: c.onSurface, fontWeight: "700" },

@@ -32,6 +32,11 @@ Build "StyleVault", a mobile-first AI Personal Stylist & Virtual Wardrobe app. U
 - Light & dark theme (device-driven). File-ownership enforced on image reads.
 - Verified: 12/12 backend pytest + full frontend e2e pass.
 
+## Added (2026-06, iteration 2)
+- **Weather Sync:** Stylist header "Enable Weather" chip requests location (permission-handled), fetches live temperature + conditions via Open-Meteo (no key), and passes it to the AI so picks match the day's temperature/layering.
+- **Shop The Gap:** the AI's missing-item suggestion is now a tappable "SHOP THE GAP" button that opens a shopping search for that exact item.
+- **Outfit Share Card:** every saved look has a Share button that renders an editorial, watermarked image (react-native-view-shot) and opens the native share sheet (downloads on web).
+
 ## Backlog (prioritized)
 - **P1:** Outfit "shop the missing item" links; weather auto-detect via location; multi-select bulk upload.
 - **P2:** Wardrobe analytics (most-worn, color distribution); share outfit as an editorial image card; calendar/outfit planner.

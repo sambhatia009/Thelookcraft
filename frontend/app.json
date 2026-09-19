@@ -12,7 +12,8 @@
       "bundleIdentifier": "com.emergent.stylevaultapp.maauzy",
       "infoPlist": {
         "NSCameraUsageDescription": "Take photos of your clothes to add them",
-        "NSPhotoLibraryUsageDescription": "Add clothing photos from your gallery"
+        "NSPhotoLibraryUsageDescription": "Add clothing photos from your gallery",
+        "NSLocationWhenInUseUsageDescription": "Match outfits to your local weather"
       }
     },
     "android": {
@@ -21,7 +22,12 @@
         "backgroundColor": "#000000"
       },
       "package": "com.emergent.stylevaultapp.maauzy",
-      "permissions": ["CAMERA", "READ_MEDIA_IMAGES"]
+      "permissions": [
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -51,7 +57,14 @@
           "cameraPermission": "Take photos of your clothes to add them"
         }
       ],
-      "expo-camera"
+      "expo-camera",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Match outfits to your local weather"
+        }
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true

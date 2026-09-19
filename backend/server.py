@@ -161,6 +161,7 @@ class OutfitBody(BaseModel):
 class StylistBody(BaseModel):
     prompt: str
     focus_item_id: Optional[str] = None
+    weather_context: Optional[str] = None
 
 
 class ProfileBody(BaseModel):
@@ -491,6 +492,8 @@ async def stylist_generate(body: StylistBody, authorization: Optional[str] = Hea
         "Every id in item_ids MUST exist in the wardrobe. No markdown, JSON only."
     )
     user_text = f"WARDROBE:\n{json.dumps(wardrobe)}\n\nREQUEST: {body.prompt}"
+    if body.weather_context:
+        user_text += f"\n\nCURRENT LOCAL WEATHER: {body.weather_context}. Factor this temperature/conditions into fabric weight, layering and season suitability."
     if focus:
         user_text += f"\n\nMUST include and build around this item: {json.dumps(focus)}"
 

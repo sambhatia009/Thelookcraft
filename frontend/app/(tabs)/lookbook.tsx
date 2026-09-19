@@ -1,7 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, View } from "react-native";
-import { Trash } from "phosphor-react-native";
+import { useRef } from "react";
+import { ActivityIndicator, FlatList, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { captureRef } from "react-native-view-shot";
+import * as Sharing from "expo-sharing";
+import { Export, Trash } from "phosphor-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, Item } from "@/src/api";
@@ -20,6 +23,7 @@ export default function Lookbook() {
   const router = useRouter();
   const qc = useQueryClient();
   const { show } = useToast();
+  const shotRefs = useRef<Record<string, any>>({});
 
   const { data, isLoading, isError, refetch, isRefetching } = useQuery<Outfit[]>({
     queryKey: ["outfits"],
@@ -36,30 +40,72 @@ export default function Lookbook() {
     }
   };
 
+  const share = async (item: Outfit) => {
+    const ref = shotRefs.current[item.id];
+    if (!ref) return;
+    try {
+      const uri = await captureRef(ref, {
+        format: "png",
+        quality: 1,
+        result: Platform.OS === "web" ? "data-uri" : "tmpfile",
+      });
+      if (Platform.OS === "web") {
+        const a = document.createElement("a");
+        a.href = uri;
+        a.download = `${item.title.replace(/\s+/g, "_")}.png`;
+        a.click();
+        show("Image downloaded", "success");
+        return;
+      }
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, { mimeType: "image/png", dialogTitle: item.title });
+      } else {
+        show("Sharing not available", "error");
+      }
+    } catch {
+      show("Could not create share image", "error");
+    }
+  };
+
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
 
   const renderCard = ({ item }: { item: Outfit }) => (
     <View style={styles.card} testID={`outfit-${item.id}`}>
-      <View style={styles.cardHeader}>
+      <View
+        ref={(r) => {
+          shotRefs.current[item.id] = r;
+        }}
+        collapsable={false}
+        style={styles.shot}
+      >
         <Text style={styles.cardTitle}>{item.title.toUpperCase()}</Text>
-        <Pressable onPress={() => remove(item.id)} testID={`delete-outfit-${item.id}`} hitSlop={8}>
-          <Trash color={colors.onSurface} size={20} />
-        </Pressable>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+          {item.items.map((it) => (
+            <View key={it.id} style={styles.thumb}>
+              <ItemThumb item={it} />
+            </View>
+          ))}
+        </ScrollView>
+        {!!item.stylist_note && <Text style={styles.note}>{item.stylist_note}</Text>}
+        <View style={styles.itemList}>
+          {item.items.map((it) => (
+            <Text key={it.id} style={styles.itemLine}>
+              · {it.name}
+            </Text>
+          ))}
+        </View>
+        <Text style={styles.watermark}>STYLEVAULT</Text>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-        {item.items.map((it) => (
-          <View key={it.id} style={styles.thumb}>
-            <ItemThumb item={it} />
-          </View>
-        ))}
-      </ScrollView>
-      {!!item.stylist_note && <Text style={styles.note}>{item.stylist_note}</Text>}
-      <View style={styles.itemList}>
-        {item.items.map((it) => (
-          <Text key={it.id} style={styles.itemLine}>
-            · {it.name}
-          </Text>
-        ))}
+
+      <View style={styles.cardActions}>
+        <Pressable style={styles.actionBtn} onPress={() => share(item)} testID={`share-outfit-${item.id}`}>
+          <Export color={colors.onSurface} size={18} weight="bold" />
+          <Text style={styles.actionText}>SHARE</Text>
+        </Pressable>
+        <Pressable style={styles.actionBtn} onPress={() => remove(item.id)} testID={`delete-outfit-${item.id}`}>
+          <Trash color={colors.onSurface} size={18} weight="bold" />
+          <Text style={styles.actionText}>DELETE</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -70,7 +116,7 @@ export default function Lookbook() {
         <Text style={styles.title}>LOOKBOOK</Text>
         <Text style={styles.sub}>SAVED OUTFITS</Text>
       </View>
-      <View style={styles.hairline} />
+      <View style={styles.hairlineStrong} />
 
       {isLoading ? (
         <View style={styles.center}>
@@ -87,7 +133,7 @@ export default function Lookbook() {
           renderItem={renderCard}
           onRefresh={refetch}
           refreshing={isRefetching}
-          ItemSeparatorComponent={() => <View style={styles.hairline} />}
+          ItemSeparatorComponent={() => <View style={styles.hairlineStrong} />}
           contentContainerStyle={{ paddingBottom: bottomChrome + spacing.xl }}
         />
       )}
@@ -100,14 +146,18 @@ const useStyles = makeStyles((c) => ({
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md },
   title: { fontSize: fontSize["3xl"], fontWeight: "900", letterSpacing: 1, color: c.onSurface },
   sub: { fontSize: fontSize.sm, color: c.muted, letterSpacing: 1, marginTop: 2 },
-  hairline: { height: 1, backgroundColor: c.border },
+  hairlineStrong: { height: 1, backgroundColor: c.border },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  card: { paddingVertical: spacing.xl, gap: spacing.md },
-  cardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg },
-  cardTitle: { fontSize: fontSize.xl, fontWeight: "900", letterSpacing: 1, color: c.onSurface, flex: 1 },
+  card: { paddingBottom: spacing.lg },
+  shot: { backgroundColor: c.surface, paddingVertical: spacing.xl, gap: spacing.md },
+  cardTitle: { fontSize: fontSize.xl, fontWeight: "900", letterSpacing: 1, color: c.onSurface, paddingHorizontal: spacing.lg },
   row: { gap: 1, paddingHorizontal: spacing.lg },
   thumb: { width: 150, height: 190, backgroundColor: c.surfaceTertiary, borderWidth: 1, borderColor: c.border },
   note: { paddingHorizontal: spacing.lg, fontSize: fontSize.base, color: c.onSurfaceSecondary, lineHeight: 21 },
   itemList: { paddingHorizontal: spacing.lg, gap: 2 },
   itemLine: { fontSize: fontSize.sm, color: c.muted, letterSpacing: 0.5 },
+  watermark: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, fontSize: 11, letterSpacing: 4, color: c.muted, fontWeight: "800" },
+  cardActions: { flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.lg, marginTop: spacing.sm },
+  actionBtn: { flex: 1, height: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, borderWidth: 1, borderColor: c.borderStrong },
+  actionText: { fontSize: fontSize.sm, fontWeight: "800", letterSpacing: 1, color: c.onSurface },
 }));
