@@ -82,17 +82,37 @@ class _ResultCollection:
         return _Res()
 
 
+class _FakePipe:
+    """Warm-worker protocol double: answers the readiness header, then stalls on the photo reply."""
+
+    def __init__(self, delay):
+        self._delay = delay
+        self._ready_sent = False
+        self.written = b""
+
+    def write(self, data):
+        self.written += data
+
+    async def drain(self):
+        return None
+
+    async def readexactly(self, n):
+        if not self._ready_sent:
+            self._ready_sent = True
+            return b"\x00" * n
+        await asyncio.sleep(self._delay)
+        return b"\x00" * n
+
+
 class _FakeProc:
     def __init__(self, communicate_delay=0.05, kill_raises=False):
         self.returncode = None
+        self.pid = 4242
         self.kill_called = False
         self.wait_called = False
-        self._communicate_delay = communicate_delay
         self._kill_raises = kill_raises
-
-    async def communicate(self, _raw):
-        await asyncio.sleep(self._communicate_delay)
-        return b"", b"timeout"
+        self.stdin = _FakePipe(communicate_delay)
+        self.stdout = self.stdin
 
     def kill(self):
         self.kill_called = True
@@ -227,6 +247,7 @@ async def test_cutout_spawn_failure_returns_none(monkeypatch):
         raise OSError("cannot spawn")
 
     monkeypatch.setattr(upload_jobs_module.asyncio, "create_subprocess_exec", explode)
+    monkeypatch.setattr(upload_jobs_module, "cutout_service", upload_jobs_module.CutoutService())
     out = await upload_jobs_module.cutout_photo(b"jpeg")
     assert out is None
 
@@ -239,6 +260,7 @@ async def test_cutout_timeout_kills_and_waits(monkeypatch):
         return fake
 
     monkeypatch.setattr(upload_jobs_module.asyncio, "create_subprocess_exec", create_proc)
+    monkeypatch.setattr(upload_jobs_module, "cutout_service", upload_jobs_module.CutoutService())
     monkeypatch.setattr(upload_jobs_module, "CUTOUT_TIMEOUT", 0.01)
 
     out = await upload_jobs_module.cutout_photo(b"jpeg")
@@ -255,6 +277,7 @@ async def test_cutout_timeout_processlookuperror_still_waits(monkeypatch):
         return fake
 
     monkeypatch.setattr(upload_jobs_module.asyncio, "create_subprocess_exec", create_proc)
+    monkeypatch.setattr(upload_jobs_module, "cutout_service", upload_jobs_module.CutoutService())
     monkeypatch.setattr(upload_jobs_module, "CUTOUT_TIMEOUT", 0.01)
 
     out = await upload_jobs_module.cutout_photo(b"jpeg")
@@ -353,13 +376,18 @@ async def test_run_claims_expired_processing_lease_and_keeps_fifo(monkeypatch):
         for doc in db.upload_jobs.docs:
             if doc["id"] == job["id"]:
                 doc["status"] = "complete"
-        if len(processed) == 2:
-            raise asyncio.CancelledError()
 
     monkeypatch.setattr(uploader, "process", fake_process)
 
+    # The loop now hands each claimed job to its own task; stop it once both jobs were processed.
+    runner = asyncio.create_task(uploader.run())
+    for _ in range(200):
+        if len(processed) == 2:
+            break
+        await asyncio.sleep(0.01)
+    runner.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await uploader.run()
+        await runner
 
     assert processed[0] == "job_oldest_queued"
     assert db.upload_jobs.claimed_ids[0] == "job_oldest_queued"

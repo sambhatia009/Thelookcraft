@@ -526,9 +526,9 @@ async def client_log(body: ClientLogBody, authorization: Optional[str] = Header(
 
 
 @api_router.get("/items/upload-jobs/{job_id}", response_model=UploadJobResult)
-async def get_upload_job(job_id: str, authorization: Optional[str] = Header(None)):
+async def get_upload_job(job_id: str, authorization: Optional[str] = Header(None), wait: float = Query(0, ge=0, le=25)):
     user = await get_current_user(authorization)
-    return await upload_jobs.result(user["user_id"], job_id)
+    return await upload_jobs.result(user["user_id"], job_id, wait=wait)
 
 
 @api_router.get("/items")

@@ -21,9 +21,9 @@ import { Button } from "@/src/ui";
 const MAX_BATCH = 10;
 
 /** Downscale before upload; if that fails the original photo is sent (the server downsizes too). */
-async function prepare(uri: string, uploadId: string) {
+async function prepare(uri: string, uploadId: string, width?: number, height?: number) {
   try {
-    return await compressForUpload(uri, undefined, undefined, uploadId);
+    return await compressForUpload(uri, width, height, uploadId);
   } catch {
     return uri;
   }
@@ -60,6 +60,8 @@ export default function AddItem() {
   const running = useRef(false);
   const uploadId = useRef(newUploadId());
   const preparedUri = useRef<string | null>(null);
+  const pickedSize = useRef<{ width?: number; height?: number }>({});
+  const attempted = useRef(false);
   const controller = useRef<AbortController | null>(null);
   const mounted = useRef(true);
   const [progress, setProgress] = useState("PREPARING PHOTO…");
@@ -78,13 +80,15 @@ export default function AddItem() {
     setError(null);
     setAnalyzing(true);
     setProgress("PREPARING PHOTO…");
+    const fresh = !attempted.current;
+    attempted.current = true;
     try {
-      if (!preparedUri.current) preparedUri.current = await prepare(uri, uploadId.current);
+      if (!preparedUri.current) preparedUri.current = await prepare(uri, uploadId.current, pickedSize.current.width, pickedSize.current.height);
       if (!mounted.current) return;
       if (active.signal.aborted) throw new Error("Upload paused. Tap Try Again to resume the same photo.");
       setLocalUri(preparedUri.current);
       const created = await uploadItemImage(preparedUri.current, {
-        uploadId: uploadId.current, signal: active.signal,
+        uploadId: uploadId.current, signal: active.signal, fresh,
         onProgress: (label) => { if (mounted.current) setProgress(label); },
       });
       if (!mounted.current) return;
@@ -102,6 +106,7 @@ export default function AddItem() {
   const reset = () => {
     uploadId.current = newUploadId();
     preparedUri.current = null;
+    attempted.current = false;
     setLocalUri(null);
     setItem(null);
     setError(null);
@@ -146,6 +151,8 @@ export default function AddItem() {
       const asset = result.assets[0];
       uploadId.current = newUploadId();
       preparedUri.current = null;
+      attempted.current = false;
+      pickedSize.current = { width: asset.width, height: asset.height };
       reportClientEvent("photo_picked", source, { width: asset.width, height: asset.height, fileSize: asset.fileSize, mimeType: asset.mimeType }, uploadId.current);
       setLocalUri(asset.uri);
       await upload(asset.uri);
@@ -165,7 +172,7 @@ export default function AddItem() {
     commitBatch(batchRef.current.map((e) => (e.key === key ? { ...e, ...patch } : e)));
 
   const startBatch = (assets: ImagePicker.ImagePickerAsset[]) => {
-    const entries: BatchEntry[] = assets.map((a) => ({ key: newUploadId(), localUri: a.uri, status: "pending" }));
+    const entries: BatchEntry[] = assets.map((a) => ({ key: newUploadId(), localUri: a.uri, status: "pending", width: a.width, height: a.height }));
     commitBatch(entries);
     runBatch();
   };
@@ -183,10 +190,11 @@ export default function AddItem() {
           const active = new AbortController();
           controller.current = active;
           patchEntry(next.key, { progress: "PREPARING PHOTO…" });
-          const uri = next.prepared ? next.localUri : await prepare(next.localUri, next.key);
+          const uri = next.prepared ? next.localUri : await prepare(next.localUri, next.key, next.width, next.height);
           if (!mounted.current) break;
-          patchEntry(next.key, { localUri: uri, prepared: true });
-          const created = await uploadItemImage(uri, { uploadId: next.key, signal: active.signal,
+          const fresh = !next.attempted;
+          patchEntry(next.key, { localUri: uri, prepared: true, attempted: true });
+          const created = await uploadItemImage(uri, { uploadId: next.key, signal: active.signal, fresh,
             onProgress: (progress) => { if (mounted.current) patchEntry(next.key, { progress }); } });
           if (!mounted.current) break;
           patchEntry(next.key, { status: "done", item: created, localUri: uri });

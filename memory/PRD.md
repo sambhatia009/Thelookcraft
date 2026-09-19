@@ -92,6 +92,11 @@ Build "StyleVault", a mobile-first AI Personal Stylist & Virtual Wardrobe app. U
 - **Resolved (user-confirmed on iPhone, iOS 26.6.2, Expo Go SDK 57):** after the native-uploader change the camera photo (3024×4032, 3.2 MB → 289 KB) was accepted in 3.9 s and fully processed (cutout + tags) 4 s later; server `client_logs` show `photo_picked` → `upload_accepted` from the user's device. The ExpoAsset red screen appeared only after camera capture in the old JS-fetch path; not reproduced since.
 
 
+### Upload speed pass (user: "slower than the initial version")
+- Measured: cold rembg subprocess 1.9–2.8 s per photo, worker poll up to 1 s, client poll up to 1.5 s + extra "check" GET, Gemini tagging 2–4 s (dominant).
+- Fixes: persistent warm cutout worker (`cutout_worker.py --serve`, length-prefixed protocol, killed/respawned on timeout; warm cutout ≈0.5 s, pre-warmed at startup); `accept()` wakes the worker instantly; up to 3 jobs processed concurrently; `GET /api/items/upload-jobs/{id}?wait=N` long-polls (≤25 s) so the client learns completion immediately; client skips the resume-check GET on a fresh upload and reuses picker width/height (no `Image.getSize`); tagging uses a 768 px copy (≈2 s vs ≈4 s). Server-side acceptance→ready now ≈2.5–4.7 s (3 concurrent photos in 4.75 s total); web flow pick→editor 4.1 s.
+- Fault-injection tests updated for the warm worker/task-per-job loop: 8/8 pass.
+
 ### Readiness health-check investigation
 - User asked to run health check, then fix its reported blocker. Two checks returned FAIL solely for missing `--tunnel`; all other reported configuration/compilation checks passed. First run also warned about local rembg resource usage (unchanged).
 - Independently verified public preview HTTP 200, `/api/` HTTP 200 with StyleVault response, Expo/backend RUNNING, public iOS Expo manifest runtime `exposdk:57.0.0`, and launch bundle URL using the configured public proxy hostname.

@@ -4,7 +4,13 @@ import { Platform } from "react-native";
 import { ApiError, BACKEND, getToken, Item } from "@/src/api";
 import { describeError, reportClientEvent } from "@/src/client-log";
 
-export type UploadOptions = { uploadId: string; onProgress?: (message: string) => void; signal?: AbortSignal };
+export type UploadOptions = {
+  uploadId: string;
+  onProgress?: (message: string) => void;
+  signal?: AbortSignal;
+  /** First attempt for this photo: skip the resume check and send straight away. */
+  fresh?: boolean;
+};
 type Job = { id: string; status: string; stage: string; error?: string; item?: Item };
 export const newUploadId = () => `photo_${Date.now()}_${Math.random().toString(36).slice(2, 14)}`;
 
@@ -94,12 +100,14 @@ export async function uploadWithProgress(uri: string, options: UploadOptions): P
 
 async function run(uri: string, options: UploadOptions, report: (event: string, error?: unknown, extra?: Record<string, unknown>) => void): Promise<Item> {
   let job: Job | undefined;
-  options.onProgress?.("CHECKING YOUR UPLOAD…");
-  try { job = await fetchJob(options.uploadId, undefined, options, 12000); }
-  catch (error) {
-    if (options.signal?.aborted) throw error;
-    if (error instanceof ApiError && error.status !== 404 && error.status < 500) throw error;
-    if (!(error instanceof ApiError)) report("status_check_failed", error);
+  if (!options.fresh) {
+    options.onProgress?.("CHECKING YOUR UPLOAD…");
+    try { job = await fetchJob(options.uploadId, undefined, options, 12000); }
+    catch (error) {
+      if (options.signal?.aborted) throw error;
+      if (error instanceof ApiError && error.status !== 404 && error.status < 500) throw error;
+      if (!(error instanceof ApiError)) report("status_check_failed", error);
+    }
   }
   if (!job || ["failed", "upload_failed", "receiving"].includes(job.status)) {
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -126,8 +134,9 @@ async function run(uri: string, options: UploadOptions, report: (event: string, 
       : job?.stage === "saving" ? "SAVING YOUR PROCESSED PHOTO…"
       : job?.stage === "uploading" ? "RECEIVING YOUR PHOTO…"
       : "PHOTO RECEIVED · ANALYSING & REMOVING BACKGROUND…");
-    await pause(1500);
-    try { job = await fetchJob(options.uploadId, undefined, options, 12000); failures = 0; }
+    // Long-poll: the server answers the moment the job settles (or after ~10 s), so no idle waiting.
+    await pause(200);
+    try { job = await fetchJob(`${options.uploadId}?wait=10`, undefined, options, 25000); failures = 0; }
     catch (error) {
       if (options.signal?.aborted || (error instanceof ApiError && error.status < 500)) throw error;
       options.onProgress?.("CONNECTION INTERRUPTED · RECONNECTING…");

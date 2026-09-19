@@ -14,6 +14,9 @@ export type BatchEntry = {
   error?: string;
   progress?: string;
   prepared?: boolean;
+  width?: number;
+  height?: number;
+  attempted?: boolean;
 };
 
 /**
