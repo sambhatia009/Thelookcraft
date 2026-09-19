@@ -12,6 +12,8 @@ export type BatchEntry = {
   status: "pending" | "uploading" | "done" | "error";
   item?: Item;
   error?: string;
+  progress?: string;
+  prepared?: boolean;
 };
 
 /**
@@ -71,19 +73,19 @@ export function BulkReview({
               {e.status === "done" && (
                 <View style={styles.statusRow}>
                   <CheckCircle color={colors.success} size={16} weight="fill" />
-                  <Text style={[styles.statusText, { color: colors.success }]}>TAGGED</Text>
+                  <Text style={[styles.statusText, { color: colors.success }]} testID={`bulk-ready-${idx}`}>{e.item?.processing_warning ? "READY TO REVIEW" : "TAGGED"}</Text>
                 </View>
               )}
               {e.status === "error" && (
                 <View style={styles.statusRow}>
                   <WarningCircle color={colors.error} size={16} weight="fill" />
-                  <Text style={[styles.statusText, { color: colors.error }]} numberOfLines={2}>
+                  <Text style={[styles.statusText, { color: colors.error }]} testID={`bulk-error-${idx}`}>
                     {e.error || "FAILED"}
                   </Text>
                 </View>
               )}
               {e.status === "pending" && <Text style={styles.statusText}>WAITING…</Text>}
-              {e.status === "uploading" && <Text style={styles.statusText}>ANALYSING & REMOVING BACKGROUND…</Text>}
+              {e.status === "uploading" && <Text style={styles.statusText} testID={`bulk-stage-${idx}`}>{e.progress || "UPLOADING PHOTO…"}</Text>}
             </View>
             <View style={styles.rowActions}>
               {e.status === "error" && (
@@ -101,6 +103,7 @@ export function BulkReview({
 
           {e.item && (
             <View style={styles.editor}>
+              {!!e.item.processing_warning && <Text style={styles.progressHint} testID={`bulk-warning-${idx}`}>{e.item.processing_warning}</Text>}
               <ItemEditor compact value={e.item} onChange={(patch) => onEdit(e.key, patch)} testIDPrefix={`bulk-${idx}-`} />
             </View>
           )}
@@ -125,6 +128,6 @@ const useStyles = makeStyles((c) => ({
   statusRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   statusText: { fontSize: 10, letterSpacing: 1, color: c.muted, fontWeight: "700", flexShrink: 1 },
   rowActions: { flexDirection: "row", gap: spacing.xs },
-  iconBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: c.border },
+  iconBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: c.border },
   editor: { padding: spacing.md, borderTopWidth: 1, borderTopColor: c.border },
 }));

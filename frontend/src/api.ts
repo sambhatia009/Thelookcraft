@@ -74,6 +74,8 @@ export type Item = {
   last_worn_at?: string | null;
   notes?: string;
   preference?: "avoid" | "neutral" | null;
+  processing_warning?: string | null;
+  background_removed?: boolean;
 };
 
 export type Profile = {
@@ -178,8 +180,9 @@ export const api = {
     req("/stylist/visualize", { method: "POST", json: { item_ids, outfit_name } }),
 };
 
-export async function uploadItemImage(uri: string) {
-  return uploadImage("/api/items/upload", uri) as Promise<Item>;
+export async function uploadItemImage(uri: string, options?: import("@/src/item-upload").UploadOptions): Promise<Item> {
+  const { uploadWithProgress, newUploadId } = await import("@/src/item-upload");
+  return uploadWithProgress(uri, options || { uploadId: newUploadId() });
 }
 
 export async function uploadProfilePhoto(uri: string) {
@@ -189,7 +192,7 @@ export async function uploadProfilePhoto(uri: string) {
 async function uploadImage(endpoint: string, uri: string) {
   const form = new FormData();
   const name = `photo_${Date.now()}.jpg`;
-  const { Platform } = require("react-native");
+  const { Platform } = await import("react-native");
   if (Platform.OS === "web") {
     const blob = await (await fetch(uri)).blob();
     form.append("file", blob, name);
@@ -197,7 +200,7 @@ async function uploadImage(endpoint: string, uri: string) {
     // Expo's fetch rejects React Native's legacy `{ uri, name, type }` parts
     // ("Unsupported FormDataPart implementation"); a Blob-compatible File works.
     // Its filename/mime come from the file URI (.jpg → image/jpeg), which FastAPI needs for UploadFile.
-    const { File } = require("expo-file-system") as typeof import("expo-file-system");
+    const { File } = await import("expo-file-system");
     form.append("file", new File(uri) as unknown as Blob);
   }
   const headers: Record<string, string> = {};

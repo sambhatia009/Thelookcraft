@@ -102,8 +102,22 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
-user_problem_statement: 'Lookbook Try-On: Add "Visualise on me" to saved looks and include the render in the share card. Also let users save visualised Stylist looks in Lookbook.'
+user_problem_statement: 'Users cannot upload camera photos to Closet in Expo Go: stuck analysing/removing background, network connection lost, reproduced on two devices in different countries.'
 backend:
+  - task: "Durable camera upload jobs and duplicate-safe recovery"
+    implemented: true
+    working: true
+    file: backend/upload_jobs.py
+    stuck_count: 1
+    priority: high
+    needs_retesting: false
+    status_history:
+      - working: NA
+        agent: main
+        comment: "New raw-image POST/GET /api/items/upload-jobs/{id}, durable Mongo queue/leases, original stored before202, deterministic item ID,25s bounded tagging and killable rembg process. Real upload acknowledgement0.24s, tags+cutout completed3.5s after acceptance. Need fault/recovery validation."
+      - working: true
+        agent: main
+        comment: "6/6 real public API regressions and8/8 isolated faults PASS; receipt/polling/item ownership/dedupe, timeout fallback, cancellation requeue and stale leases covered. Cleanup wait now bounded5s."
   - task: "Persist try-on on saved looks and validate ownership/item match"
     implemented: true
     working: true
@@ -119,6 +133,20 @@ backend:
         agent: testing
         comment: "Iteration 7 backend 9/9 PASS, real AI/storage, persistence and validation confirmed."
 frontend:
+  - task: "Short Expo File uploads, progress polling and photo-preserving retries"
+    implemented: true
+    working: true
+    file: frontend/src/item-upload.ts
+    stuck_count: 1
+    priority: high
+    needs_retesting: false
+    status_history:
+      - working: NA
+        agent: main
+        comment: "Explicit expo/fetch raw File body, bounded requests/body reads, stable uploadId on retry, pause/resume, no silent fullres compression fallback. Real mobile-web gallery→tag editor→Save PASS. Physical camera transport needs device confirmation."
+      - working: true
+        agent: main
+        comment: "Focused screenshot follow-up PASS: lostPOST reply AFTER real202, polling recovered and exactly one item; bulk2photo edit/save persisted exactly2 names; test items removed. Picker listener-before-click resolved harness limitation; no app picker defect. iOS bundleHTTP200. All available automated checks pass; physical Expo Go camera acceptance still required."
   - task: "Lookbook try-on, loaded render in share/save card"
     implemented: true
     working: true
@@ -150,19 +178,24 @@ frontend:
 metadata:
   created_by: main
   version: "1.0"
-  test_sequence: 8
+  test_sequence: 9
   run_ui: true
 test_plan:
   current_focus:
-    - "Real Lookbook try-on and persistence after re-login"
-    - "Stylist visualise-before-save and save-before-visualise"
-    - "Share/Save downloaded image actually contains render, title and watermark"
-    - "No-photo, failure/retry, invalid/foreign render, deleted outfits, edit invalidation"
-    - "Existing tags, wear, delete and no-render card regression"
+    - "Camera upload202 acknowledgement, real Gemini+cutout and private file GET"
+    - "Interrupted response/poll recovery, sameID retry dedup, auth isolation, invalid/oversize photos"
+    - "Slow AI/rembg fallback and truthful warning, worker lease/restart recovery"
+    - "Single pause/resume and save, bulk2photos review/edit/save/retry"
   stuck_tasks: []
   test_all: false
   test_priority: high_first
 agent_communication:
+  - agent: main
+    message: "Iteration9 closed available automated gaps. See iteration_9_followup.json. The HIGH picker issue in initial report was harness timing, not product defect: same real ImagePicker successfully uploaded via preinstalled chooser listener, lostPOST recovery and bulkSave verified. No success mocks. Pytest8fault PASS after cleanup timeout; current nativeiOSbundleHTTP200. Do not claim physical iPhone verification; ask user to reopen updated Expo Go app and test fresh camera capture. Keep unrelated provider STORAGE_BASE default unchanged (standard managed storage integration)."
+  - agent: main
+    message: "Continue interrupted iteration9 only. Prior agent created real tests test_upload_jobs_iter9.py(6/6PASS, ack0.619s,total5.102s), and two fault tests failed solely missing pytest-asyncio. Corrected those decorators to existing pytest-anyio with asyncio backend fixture; now2/2PASS. No iteration_9.json was written before interruption: must create final report. Main also hardened cutout spawn failures to original-photo fallback; stale receiving lease GET becomes upload_failed rather than permanent waiting; concurrent different-photo sameID returns409. Single pause during compression now shows paused message; bulk errors readable/44pt controls. Remaining coverage: true timeout+process kill, graceful job cancellation+expired lease recovery, lost POST response after real acceptance, bulk save/edit completion and duplicate counts. Test doubles only isolated failure tests, production APIs remain real. Do not rerun unrelated Lookbook tests. Read current files as changed."
+  - agent: main
+    message: "Iteration9 priority repeated Expo Go camera upload bug. Review upload_jobs.py/cutout_worker.py/server.py/item-upload.ts/api.ts/compress-image.ts/add-item.tsx/bulk-review.tsx. Existing QA login memory/test_credentials.md. New UI IDs upload-progress-label, upload-progress-hint, pause-upload-btn, upload-processing-warning. Existing add-item-fab/choose-photo-btn/take-photo-btn/tag-editor/retry-upload-btn/save-item-btn. All changed files lint clean; unrelated TypeScript theme/tabs errors predate work. Real mobile-web upload success screenshot /tmp/upload-job-ready.jpg. Need rigorous interruption/timeout/duplicate/worker tests; isolated dependency doubles allowed only for deliberate failure injections, do not mock production integrations. Never claim physical device camera verified without hardware. No auth changes."
   - agent: main
     message: "Read memory/test_credentials.md: lookbook.tryon.qa@example.com / pass1234 is CREATED and screenshot verified. Legacy demo login failed; do not use it. Use this dedicated account or document any new ones. No integrations mocked; real Gemini and private storage. Python/edited screen lints pass. Existing unrelated tsc errors in app/_layout.tsx typed routes, tabs icon color and theme ColorSchemeName predate edits (no new type errors). Verify actual downloaded PNG via image inspection, plus 390x844 screenshots. Native share/Photos permissions require device testing."
   - agent: testing
@@ -171,3 +204,5 @@ agent_communication:
     message: "Critical loop fixed with stable Image callbacks/source plus parent readiness no-op guard. Also handled RN Web onLoad event target dimensions (native source differs). Self-test 390x844 PASS: existing render displays, Share exports 390x1027 PNG with 1159 sampled colors, Save also downloads; no runtime errors. Need remaining frontend Stylist A/B flows + exported PNG visual inspection + persistence/error-retry checks. Do not repeat expensive backend matrix. All iteration7 account credentials documented."
   - agent: main
     message: "All core acceptance checks complete after iteration8 and focused follow-up. Remaining report gaps closed: no-render fixture Shared/Saved, tag changed to Work, wear count reached1, delete confirmed by API; fixture removed. Older reported image returned200/image with nonempty body 3/3 normal reads. Native share sheet/Photos/device-dark-mode verification is the remaining manual-device follow-up, not a known broken flow."
+  - agent: testing
+    message: "Iteration9 continuation: backend upload-jobs regressions PASS (6/6) and extended fault-injection PASS (8/8) including timeout kill/wait, spawn OSError fallback, cancellation requeue, expired receiving->upload_failed retry, and FIFO lease-claim. Frontend login/closet load PASS, but Expo web image-picker could not be automated in Playwright here (no filechooser event/input[type=file]), so lost-POST and bulk2photos UI completion remain blocked for this environment; requires real device/manual or alternative harness."

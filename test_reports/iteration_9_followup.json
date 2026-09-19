@@ -1,0 +1,20 @@
+{
+  "summary": "All available upload-job automated acceptance checks pass. Physical Expo Go camera confirmation remains required.",
+  "backend": {"real_api_regressions": "6/6 PASS", "isolated_failure_tests": "8/8 PASS", "sample_ack_seconds": 0.619, "sample_processing_seconds": 5.102},
+  "frontend": {
+    "gallery_photo_editor_save": "PASS",
+    "pause_resume": "PASS in initial iteration 9 testing",
+    "transient_poll_failure": "PASS in initial iteration 9 testing",
+    "lost_post_response_after_real_accept": "PASS: route.fetch reached real202, response dropped deliberately, GET recovered to editor",
+    "lost_response_duplicate_prevention": "PASS: exactly one new item",
+    "bulk_two_photo_review_edit_save": "PASS: exactly two items with edited names persisted",
+    "picker_report_resolution": "No production picker changes: registering chooser listener BEFORE click successfully opens real Expo web picker",
+    "test_fixture_cleanup": "Three follow-up test items deleted"
+  },
+  "native_bundle": {"platform": "ios", "status": 200, "bytes": 19451854, "physical_device_tested": false},
+  "artifacts": ["/tmp/upload-bulk-reviewed.jpg", "/tmp/upload-bulk-saved.jpg", "/root/.emergent/automation_output/20260919_162526/console_20260919_162526.log", "/app/test_reports/pytest/iter9_faults_final.xml"],
+  "known_application_blockers": [],
+  "remaining_acceptance": ["Fresh camera capture on the user's two physical Expo Go devices"],
+  "production_integrations_mocked": false,
+  "test_only_fault_injection": "Isolated adapters exercise AI timeout, subprocess failure/cleanup, storage failure and queue recovery; browser deliberately drops network replies for recovery testing."
+}

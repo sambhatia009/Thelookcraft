@@ -74,6 +74,17 @@ Build "StyleVault", a mobile-first AI Personal Stylist & Virtual Wardrobe app. U
 - Confirm new try-on share cards in iPhone/Android native share sheets and Photos, plus device-driven dark mode (web emulation was inconclusive).
 
 ## Bug fixes
+### Camera upload connection loss — job-based fix (automated checks passed; device confirmation pending)
+- User reports repeat failure in Expo Go on two devices in different countries. Screenshot shows native fetch network-lost error while analysing/removing background. Exact device-side transport cause cannot be proven without device logs, but long response wait is a confirmed architectural flaw; diagnostics also saw a tagging call exceed90s.
+- New `backend/upload_jobs.py`: original photo validated/downscaled/stored privately, short raw-image POST `/api/items/upload-jobs/{id}` returns202 without waiting for AI; Mongo queue worker, progress GET, lease recovery, deterministic item id, deduplicated retries.
+- Tagging and killable background-removal subprocess have25s limits; optional processing failures retain original photo/manual tags and show truthful warnings rather than blocking closet save.
+- `src/item-upload.ts`: explicit expo/fetch raw File upload, response+body deadlines, automatic reconnection/status polling, stable retry IDs. Single/bulk UI has actual progress, keeps prepared photo, and supports pause/resume for single upload. Compression no longer silently uploads a full-resolution original on failure.
+- Existing `/api/items/upload` retained for compatibility; new app uses the job route. No auth/model/provider/proxy changes.
+- Verified: real image gallery→editor→Save; 6/6 public-API tests (acceptance~0.62s, total~5.1s), 8/8 fault tests for timeout/fallback/kill/requeue/leases, lost POST response after real acceptance recovers to exactly one item, bulk two-photo edit/save persists exactly two named items. A reported browser-picker automation block was resolved using the correctly timed listener; no picker changes were needed.
+- Added 5s subprocess cleanup bound, graceful subprocess startup failure, stale-receipt retry state, concurrent conflicting-photo protection, and readable bulk errors. Background-removal/AI unavailability yields truthful manual-review warnings, not fake tags or a fabricated cutout.
+- Current iOS bundle was fetched from its public manifest successfully (HTTP200,~19.45MB). This proves native bundling, not physical camera/network behavior. Real Expo Go capture on the user's two devices remains the final acceptance check.
+- Reports: `test_reports/iteration_9.json`, `test_reports/iteration_9_followup.json`; tests `test_upload_jobs_iter9.py`, `test_upload_jobs_fault_injection_iter9.py`. No production integrations replaced by mocks; isolated failure adapters are tests only.
+
 ### Readiness health-check investigation
 - User asked to run health check, then fix its reported blocker. Two checks returned FAIL solely for missing `--tunnel`; all other reported configuration/compilation checks passed. First run also warned about local rembg resource usage (unchanged).
 - Independently verified public preview HTTP 200, `/api/` HTTP 200 with StyleVault response, Expo/backend RUNNING, public iOS Expo manifest runtime `exposdk:57.0.0`, and launch bundle URL using the configured public proxy hostname.

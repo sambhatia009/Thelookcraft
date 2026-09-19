@@ -13,13 +13,14 @@ from typing import List, Optional
 import bcrypt
 import httpx
 import requests
-from fastapi import FastAPI, APIRouter, HTTPException, Header, UploadFile, File, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Header, UploadFile, File, Query, Request
 from fastapi.responses import Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field
+from upload_jobs import UploadJobs, UploadJobResult, MAX_BYTES
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -482,6 +483,24 @@ async def upload_item(authorization: Optional[str] = Header(None), file: UploadF
     }
     await db.items.insert_one(doc)
     return clean_item(doc)
+
+
+@api_router.post("/items/upload-jobs/{job_id}", response_model=UploadJobResult, status_code=202)
+async def create_upload_job(job_id: str, request: Request, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    upload_jobs.identity(user["user_id"], job_id)
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw) > MAX_BYTES:
+            raise HTTPException(413, "Photo is too large. Choose a photo smaller than 16 MB.")
+    return await upload_jobs.accept(user["user_id"], job_id, bytes(raw))
+
+
+@api_router.get("/items/upload-jobs/{job_id}", response_model=UploadJobResult)
+async def get_upload_job(job_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    return await upload_jobs.result(user["user_id"], job_id)
 
 
 @api_router.get("/items")
@@ -1046,6 +1065,7 @@ async def root():
     return {"message": "StyleVault API"}
 
 
+upload_jobs = UploadJobs(db, tag_image, put_object, get_object, APP_NAME)
 app.include_router(api_router)
 
 app.add_middleware(
@@ -1059,6 +1079,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
+    await upload_jobs.start()
     try:
         await db.users.create_index("email", unique=True)
         await db.users.create_index("user_id", unique=True)
@@ -1077,4 +1098,5 @@ async def startup():
 
 @app.on_event("shutdown")
 async def shutdown():
+    await upload_jobs.stop()
     client.close()

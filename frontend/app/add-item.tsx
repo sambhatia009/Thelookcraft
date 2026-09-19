@@ -2,8 +2,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import { useRef, useState } from "react";
-import { Linking, Platform, Pressable, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Linking, Pressable, Text, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { Camera, Images, X } from "phosphor-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -12,6 +12,7 @@ import { Item, uploadItemImage, api, imageUri } from "@/src/api";
 import { BatchEntry, BulkReview } from "@/src/components/bulk-review";
 import { ItemEditor } from "@/src/components/item-editor";
 import { compressForUpload } from "@/src/compress-image";
+import { newUploadId } from "@/src/item-upload";
 import { useToast } from "@/src/toast";
 import { fontSize, makeStyles, spacing, useTheme } from "@/src/theme";
 import { Button } from "@/src/ui";
@@ -47,25 +48,50 @@ export default function AddItem() {
   const [batch, setBatch] = useState<BatchEntry[] | null>(null);
   const batchRef = useRef<BatchEntry[]>([]);
   const running = useRef(false);
+  const uploadId = useRef(newUploadId());
+  const preparedUri = useRef<string | null>(null);
+  const controller = useRef<AbortController | null>(null);
+  const mounted = useRef(true);
+  const [progress, setProgress] = useState("PREPARING PHOTO…");
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; controller.current?.abort(); };
+  }, []);
 
   const close = () => router.back();
 
   const upload = async (uri: string) => {
+    if (controller.current && !controller.current.signal.aborted) return;
+    const active = new AbortController();
+    controller.current = active;
     setError(null);
     setAnalyzing(true);
+    setProgress("PREPARING PHOTO…");
     try {
-      const created = await uploadItemImage(uri);
+      if (!preparedUri.current) preparedUri.current = await compressForUpload(uri);
+      if (!mounted.current) return;
+      if (active.signal.aborted) throw new Error("Upload paused. Tap Try Again to resume the same photo.");
+      setLocalUri(preparedUri.current);
+      const created = await uploadItemImage(preparedUri.current, {
+        uploadId: uploadId.current, signal: active.signal,
+        onProgress: (label) => { if (mounted.current) setProgress(label); },
+      });
+      if (!mounted.current) return;
       setItem(created);
       qc.invalidateQueries({ queryKey: ["items"] });
     } catch (e: any) {
-      const msg = e?.message && e.message !== "Network request failed" ? e.message : "Upload failed — check your connection and try again";
-      setError(msg);
+      const msg = e?.message && !/fetch failed|network request failed/i.test(e.message) ? e.message : "The connection was interrupted. Your photo is kept here; tap Try Again to resume.";
+      if (mounted.current) setError(msg);
     } finally {
-      setAnalyzing(false);
+      if (mounted.current) setAnalyzing(false);
+      controller.current = null;
     }
   };
 
   const reset = () => {
+    uploadId.current = newUploadId();
+    preparedUri.current = null;
     setLocalUri(null);
     setItem(null);
     setError(null);
@@ -108,11 +134,10 @@ export default function AddItem() {
       }
 
       const asset = result.assets[0];
+      uploadId.current = newUploadId();
+      preparedUri.current = null;
       setLocalUri(asset.uri);
-      setAnalyzing(true);
-      const uri = Platform.OS === "web" ? asset.uri : await compressForUpload(asset.uri, asset.width, asset.height);
-      setLocalUri(uri);
-      await upload(uri);
+      await upload(asset.uri);
     } catch {
       setAnalyzing(false);
       setError("Could not open the camera or gallery. Please try again.");
@@ -128,33 +153,40 @@ export default function AddItem() {
     commitBatch(batchRef.current.map((e) => (e.key === key ? { ...e, ...patch } : e)));
 
   const startBatch = (assets: ImagePicker.ImagePickerAsset[]) => {
-    const entries: BatchEntry[] = assets.map((a, i) => ({ key: `${Date.now()}-${i}`, localUri: a.uri, status: "pending" }));
+    const entries: BatchEntry[] = assets.map((a) => ({ key: newUploadId(), localUri: a.uri, status: "pending" }));
     commitBatch(entries);
-    runBatch(assets);
+    runBatch();
   };
 
   /** Sequential worker: analyses pending entries one at a time so the phone and the AI aren't flooded. */
-  const runBatch = async (assets?: ImagePicker.ImagePickerAsset[]) => {
+  const runBatch = async () => {
     if (running.current) return;
     running.current = true;
     try {
-      while (true) {
+      while (mounted.current) {
         const next = batchRef.current.find((e) => e.status === "pending");
         if (!next) break;
         patchEntry(next.key, { status: "uploading", error: undefined });
         try {
-          const asset = assets?.find((a) => a.uri === next.localUri);
-          const uri =
-            Platform.OS === "web" || !asset ? next.localUri : await compressForUpload(asset.uri, asset.width, asset.height);
-          const created = await uploadItemImage(uri);
+          const active = new AbortController();
+          controller.current = active;
+          patchEntry(next.key, { progress: "PREPARING PHOTO…" });
+          const uri = next.prepared ? next.localUri : await compressForUpload(next.localUri);
+          if (!mounted.current) break;
+          patchEntry(next.key, { localUri: uri, prepared: true });
+          const created = await uploadItemImage(uri, { uploadId: next.key, signal: active.signal,
+            onProgress: (progress) => { if (mounted.current) patchEntry(next.key, { progress }); } });
+          if (!mounted.current) break;
           patchEntry(next.key, { status: "done", item: created, localUri: uri });
         } catch (e: any) {
-          const msg = e?.message && e.message !== "Network request failed" ? e.message : "Upload failed — tap retry";
+          if (!mounted.current) break;
+          const msg = e?.message && !/fetch failed|network request failed/i.test(e.message) ? e.message : "Connection interrupted. Tap retry to resume this photo.";
           patchEntry(next.key, { status: "error", error: msg });
         }
       }
     } finally {
       running.current = false;
+      controller.current = null;
       qc.invalidateQueries({ queryKey: ["items"] });
     }
   };
@@ -219,7 +251,7 @@ export default function AddItem() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.topbar}>
         <Text style={styles.topTitle}>ADD ITEM</Text>
-        <Pressable onPress={close} testID="close-add-item" hitSlop={8}>
+        <Pressable onPress={close} testID="close-add-item" hitSlop={8} style={styles.closeBtn}>
           <X color={colors.onSurface} size={24} weight="bold" />
         </Pressable>
       </View>
@@ -265,10 +297,18 @@ export default function AddItem() {
               <Image source={{ uri: item ? imageUri(item) : localUri }} style={styles.preview} contentFit="contain" />
               {analyzing && (
                 <View style={styles.analyzeOverlay} testID="analyzing-overlay">
-                  <Text style={styles.analyzeText}>ANALYSING & REMOVING BACKGROUND...</Text>
+                  <ActivityIndicator color={colors.onSurfaceInverse} testID="upload-progress-spinner" />
+                  <Text style={styles.analyzeText} testID="upload-progress-label">{progress}</Text>
                 </View>
               )}
             </View>
+
+            {analyzing && (
+              <View style={styles.progressHelp}>
+                <Text style={styles.progressHint} testID="upload-progress-hint">Once received, your photo keeps processing even if the connection drops.</Text>
+                <Button title="Pause & keep photo" variant="outline" onPress={() => controller.current?.abort()} testID="pause-upload-btn" />
+              </View>
+            )}
 
             {!item && !analyzing && (
               <View style={styles.retryRow} testID="upload-retry-row">
@@ -279,6 +319,7 @@ export default function AddItem() {
 
             {item && (
               <View style={{ gap: spacing.lg }} testID="tag-editor">
+                {!!item.processing_warning && <Text style={styles.progressHint} testID="upload-processing-warning">{item.processing_warning}</Text>}
                 <ItemEditor value={item} onChange={(patch) => setItem((it) => (it ? { ...it, ...patch } : it))} />
                 <Button title="Save to Closet" onPress={save} loading={saving} testID="save-item-btn" />
               </View>
@@ -294,6 +335,9 @@ const useStyles = makeStyles((c) => ({
   container: { flex: 1, backgroundColor: c.surface },
   topbar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   topTitle: { fontSize: fontSize.xl, fontWeight: "900", letterSpacing: 1, color: c.onSurface },
+  closeBtn: { minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center" },
+  progressHelp: { gap: spacing.md },
+  progressHint: { color: c.muted, fontSize: fontSize.sm, lineHeight: 18 },
   hairline: { height: 1, backgroundColor: c.borderStrong },
   pickWrap: { gap: spacing.md, marginTop: spacing.xl },
   pickBtn: { borderWidth: 1, borderColor: c.borderStrong, paddingVertical: spacing["2xl"], alignItems: "center", gap: spacing.md, backgroundColor: c.surfaceTertiary },
@@ -301,7 +345,7 @@ const useStyles = makeStyles((c) => ({
   pickHint: { fontSize: 10, letterSpacing: 1.5, color: c.muted, fontWeight: "700", marginTop: -spacing.xs },
   previewBox: { aspectRatio: 1, backgroundColor: c.surfaceTertiary, borderWidth: 1, borderColor: c.border, alignItems: "center", justifyContent: "center" },
   preview: { width: "100%", height: "100%" },
-  analyzeOverlay: { ...({ position: "absolute" } as any), left: 0, right: 0, bottom: 0, padding: spacing.md, backgroundColor: c.surfaceInverse },
+  analyzeOverlay: { position: "absolute", left: 0, right: 0, bottom: 0, padding: spacing.md, gap: spacing.sm, backgroundColor: c.surfaceInverse },
   analyzeText: { color: c.onSurfaceInverse, fontSize: fontSize.sm, letterSpacing: 1, textAlign: "center", fontWeight: "700" },
   errorBox: { borderWidth: 1, borderColor: c.error, padding: spacing.md, backgroundColor: c.surfaceTertiary },
   errorText: { color: c.error, fontSize: fontSize.sm, fontWeight: "700", letterSpacing: 0.3, lineHeight: 19 },

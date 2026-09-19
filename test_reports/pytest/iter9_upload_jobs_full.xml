@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="8" time="24.002" timestamp="2026-09-19T16:07:34.570203+00:00" hostname="agent-env-72f60325-0c49-441a-8fe3-b7afd2150638"><testcase classname="tests.test_upload_jobs_iter9.TestUploadJobsCore" name="test_ack_then_complete_with_private_file_access" time="6.172" /><testcase classname="tests.test_upload_jobs_iter9.TestUploadJobsValidationAndLifecycle" name="test_rejects_empty_malformed_and_oversize" time="1.695" /><testcase classname="tests.test_upload_jobs_iter9.TestUploadJobsValidationAndLifecycle" name="test_deleted_completed_item_returns_410" time="9.218" /><testcase classname="tests.test_upload_jobs_iter9.TestUploadJobsCore" name="test_same_id_same_photo_idempotent_even_when_concurrent" time="8.541" /><testcase classname="tests.test_upload_jobs_fault_injection_iter9" name="test_processing_completes_with_manual_details_when_tag_and_cutout_unavailable" time="0.000"><failure message="Failed: async def functions are not natively supported.&#10;You need to install a suitable plugin for your async framework, for example:&#10;  - anyio&#10;  - pytest-asyncio&#10;  - pytest-tornasync&#10;  - pytest-trio&#10;  - pytest-twisted">async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted</failure></testcase><testcase classname="tests.test_upload_jobs_fault_injection_iter9" name="test_cutout_store_failure_falls_back_to_original_and_completes" time="0.000"><failure message="Failed: async def functions are not natively supported.&#10;You need to install a suitable plugin for your async framework, for example:&#10;  - anyio&#10;  - pytest-asyncio&#10;  - pytest-tornasync&#10;  - pytest-trio&#10;  - pytest-twisted">async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted</failure></testcase><testcase classname="tests.test_upload_jobs_iter9.TestUploadJobsCore" name="test_same_id_different_photo_conflict_409" time="0.635" /><testcase classname="tests.test_upload_jobs_iter9.TestUploadJobsCore" name="test_job_and_file_ownership_and_auth" time="8.096" /></testsuite></testsuites>
