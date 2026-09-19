@@ -65,6 +65,7 @@ Build "StyleVault", a mobile-first AI Personal Stylist & Virtual Wardrobe app. U
 
 ## Backlog (prioritized)
 - **P0:** none outstanding for the Lookbook try-on feature.
+- **P0 — health-check tooling:** automated readiness check still reports FAIL for missing Expo `--tunnel` in readonly platform Supervisor config. Troubleshooting and platform support identify this as a managed-proxy false positive; platform health-check correction is required. Do not add ngrok or edit readonly Supervisor configuration merely to satisfy this check.
 - **P1:** calendar/outfit planner; wear history timeline.
 - **P2:** cost-per-wear; optional render-only share card layout.
 
@@ -73,6 +74,12 @@ Build "StyleVault", a mobile-first AI Personal Stylist & Virtual Wardrobe app. U
 - Confirm new try-on share cards in iPhone/Android native share sheets and Photos, plus device-driven dark mode (web emulation was inconclusive).
 
 ## Bug fixes
+### Readiness health-check investigation
+- User asked to run health check, then fix its reported blocker. Two checks returned FAIL solely for missing `--tunnel`; all other reported configuration/compilation checks passed. First run also warned about local rembg resource usage (unchanged).
+- Independently verified public preview HTTP 200, `/api/` HTTP 200 with StyleVault response, Expo/backend RUNNING, public iOS Expo manifest runtime `exposdk:57.0.0`, and launch bundle URL using the configured public proxy hostname.
+- `EXPO_PACKAGER_PROXY_URL` is configured in both frontend environment and Supervisor. `/etc/supervisor/conf.d/supervisord.conf` is explicitly readonly/platform-managed. No code/configuration changes made; adding a second ngrok tunnel is not the appropriate correction.
+- Platform support advises a health-check logic update. User may contact support@emergent.sh with Job ID, screenshot, and reference “Expo managed proxy false positive blocker.” Automated readiness remains FAIL until platform tooling is corrected; do not claim a passing check.
+
 - **Stylist tab fixes:** (a) iOS 26 NativeTabs hid the composer/FAB behind the tab bar → native tabs disabled (`usesNativeTabs=false`), JS Tabs everywhere; (b) "Try Another" re-sends the same prompt with `avoid_item_ids` so Gemini proposes a different look; (c) result cards are editable: dismiss (X), tap piece → swap, remove badge, ADD PIECE tile, CLEAR CONVERSATION; edited looks reset Saved. (d) "Style around this" from item detail now hands off via `src/stylist-focus.ts` store + `router.dismissTo` (route params raced the modal dismiss on iOS).
 - **"Unsupported FormDataPart implementation" on Expo Go:** Expo SDK 57's global fetch rejects RN's legacy `{uri,name,type}` FormData part. `uploadItemImage` now appends `new File(uri)` from `expo-file-system` on native (Blob-compatible, filename+mime from URI). Verified via Node port of expo's `convertFormDataAsync` + web regression.
 - **Camera add-item silent failure (iOS Expo Go):** add-item is a native modal so root toasts rendered beneath it; large camera photos (~10 MB) took ~50 s and timed out. Fixed: on-device compression (`src/compress-image.ts`, expo-image-manipulator, 1280px JPEG), inline error + Try Again / Choose Another inside the modal, backend downscale before Gemini + concurrent tagging/rembg (~6-10 s).
