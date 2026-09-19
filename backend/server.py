@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -169,11 +169,32 @@ class OutfitBody(BaseModel):
     item_ids: List[str]
     stylist_note: str = ""
     occasion: str = ""
+    visualization_path: Optional[str] = None
 
 
 class OutfitUpdate(BaseModel):
     occasion: Optional[str] = None
     title: Optional[str] = None
+    visualization_path: Optional[str] = None
+
+
+class SavedOutfit(BaseModel):
+    id: str
+    user_id: str
+    title: str
+    item_ids: List[str]
+    stylist_note: str = ""
+    occasion: str = ""
+    visualization_path: Optional[str] = None
+    items: List[dict] = Field(default_factory=list)
+    created_at: datetime
+    wear_count: int = 0
+    last_worn_at: Optional[datetime] = None
+
+
+class VisualizationResult(BaseModel):
+    storage_path: str
+    cached: bool
 
 
 class StylistBody(BaseModel):
@@ -685,23 +706,47 @@ async def stylist_generate(body: StylistBody, authorization: Optional[str] = Hea
 # ---------------------------------------------------------------------------
 # Saved outfits
 # ---------------------------------------------------------------------------
-@api_router.get("/outfits")
+async def outfit_items(user_id: str, item_ids: List[str], require_all: bool = False):
+    docs = await db.items.find(
+        {"id": {"$in": item_ids}, "user_id": user_id, "deleted_at": None}, {"_id": 0}
+    ).to_list(1000)
+    by_id = {d["id"]: d for d in docs}
+    if require_all and (not item_ids or len(item_ids) > 50 or set(item_ids) != set(by_id)):
+        raise HTTPException(status_code=400, detail="Choose 1–50 available pieces from your own closet.")
+    return [by_id[i] for i in dict.fromkeys(item_ids) if i in by_id]
+
+
+async def validate_visualization(user_id: str, path: str, item_ids: List[str]):
+    # Never accept arbitrary URLs, another user's image, or a render of different pieces.
+    doc = await db.visualizations.find_one({"user_id": user_id, "storage_path": path}, {"_id": 0})
+    if not doc:
+        doc = await db.outfits.find_one(
+            {"user_id": user_id, "visualization_path": path, "deleted_at": None}, {"_id": 0}
+        )
+    if not doc or set(doc.get("item_ids", [])) != set(item_ids):
+        raise HTTPException(status_code=400, detail="This try-on does not match your look. Visualise it again.")
+
+
+@api_router.get("/outfits", response_model=List[SavedOutfit])
 async def list_outfits(authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
     outfits = await db.outfits.find({"user_id": user["user_id"], "deleted_at": None}, {"_id": 0}).sort("created_at", -1).to_list(1000)
     ids = {i for o in outfits for i in o.get("item_ids", [])}
     items_by_id = {}
     if ids:
-        docs = await db.items.find({"id": {"$in": list(ids)}}, {"_id": 0}).to_list(1000)
+        docs = await db.items.find({"id": {"$in": list(ids)}, "user_id": user["user_id"]}, {"_id": 0}).to_list(1000)
         items_by_id = {d["id"]: d for d in docs}
     for o in outfits:
         o["items"] = [items_by_id[i] for i in o.get("item_ids", []) if i in items_by_id]
     return outfits
 
 
-@api_router.post("/outfits")
+@api_router.post("/outfits", response_model=SavedOutfit)
 async def save_outfit(body: OutfitBody, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
+    items = await outfit_items(user["user_id"], body.item_ids, require_all=True)
+    if body.visualization_path:
+        await validate_visualization(user["user_id"], body.visualization_path, body.item_ids)
     doc = {
         "id": str(uuid.uuid4()),
         "user_id": user["user_id"],
@@ -709,23 +754,49 @@ async def save_outfit(body: OutfitBody, authorization: Optional[str] = Header(No
         "item_ids": body.item_ids,
         "stylist_note": body.stylist_note,
         "occasion": body.occasion,
+        "visualization_path": body.visualization_path or None,
         "deleted_at": None,
         "created_at": now_utc(),
     }
     await db.outfits.insert_one(doc)
-    return clean_item(doc)
+    doc.pop("_id", None)
+    return {**doc, "items": items}
 
 
-@api_router.patch("/outfits/{outfit_id}")
+@api_router.patch("/outfits/{outfit_id}", response_model=SavedOutfit)
 async def update_outfit(outfit_id: str, body: OutfitUpdate, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    updates = {k: v.strip() if isinstance(v, str) else v for k, v in body.dict().items() if v is not None}
-    if updates:
-        await db.outfits.update_one({"id": outfit_id, "user_id": user["user_id"]}, {"$set": updates})
-    doc = await db.outfits.find_one({"id": outfit_id, "user_id": user["user_id"]}, {"_id": 0})
+    query = {"id": outfit_id, "user_id": user["user_id"], "deleted_at": None}
+    doc = await db.outfits.find_one(query, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Outfit not found")
-    return doc
+    updates = {k: v.strip() if isinstance(v, str) else v for k, v in body.model_dump().items() if v is not None}
+    if "visualization_path" in updates:
+        await validate_visualization(user["user_id"], updates["visualization_path"], doc["item_ids"])
+    if updates:
+        result = await db.outfits.update_one(query, {"$set": updates})
+        if not result.matched_count:
+            raise HTTPException(status_code=404, detail="Outfit not found")
+    return {**doc, **updates, "items": await outfit_items(user["user_id"], doc["item_ids"])}
+
+
+@api_router.post("/outfits/{outfit_id}/visualize", response_model=SavedOutfit)
+async def visualize_saved_outfit(outfit_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    query = {"id": outfit_id, "user_id": user["user_id"], "deleted_at": None}
+    doc = await db.outfits.find_one(query, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Outfit not found")
+    items = await outfit_items(user["user_id"], doc["item_ids"], require_all=True)
+    if not doc.get("visualization_path"):
+        result = await generate_visualization(VisualizeBody(item_ids=doc["item_ids"], outfit_name=doc["title"]), user)
+        updated = await db.outfits.update_one(query, {"$set": {"visualization_path": result["storage_path"]}})
+        if not updated.matched_count:
+            raise HTTPException(status_code=404, detail="Outfit was removed while creating the try-on.")
+        doc = await db.outfits.find_one(query, {"_id": 0})
+        if not doc:
+            raise HTTPException(status_code=404, detail="Outfit not found")
+    return {**doc, "items": items}
 
 
 @api_router.delete("/outfits/{outfit_id}")
@@ -891,25 +962,28 @@ async def load_item_image(item: dict) -> Optional[bytes]:
     return None
 
 
-@api_router.post("/stylist/visualize")
+@api_router.post("/stylist/visualize", response_model=VisualizationResult)
 async def visualize_outfit(body: VisualizeBody, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    return await generate_visualization(body, user)
+
+
+async def generate_visualization(body: VisualizeBody, user: dict):
     import base64
 
-    user = await get_current_user(authorization)
     profile = await db.profiles.find_one({"user_id": user["user_id"]}, {"_id": 0}) or {}
     if not profile.get("photo_path"):
         raise HTTPException(status_code=400, detail="Add your photo in Profile first so the stylist can dress you.")
     if not body.item_ids:
         raise HTTPException(status_code=400, detail="item_ids required")
 
-    key = ",".join(sorted(body.item_ids))
-    cached = await db.visualizations.find_one({"user_id": user["user_id"], "key": key}, {"_id": 0})
+    items = await outfit_items(user["user_id"], body.item_ids, require_all=True)
+    key = ",".join(sorted(set(body.item_ids)))
+    cached = await db.visualizations.find_one(
+        {"user_id": user["user_id"], "key": key, "photo_path": profile["photo_path"]}, {"_id": 0}
+    )
     if cached:
         return {"storage_path": cached["storage_path"], "cached": True}
-
-    items = await db.items.find({"id": {"$in": body.item_ids}, "user_id": user["user_id"], "deleted_at": None}, {"_id": 0}).to_list(50)
-    if not items:
-        raise HTTPException(status_code=404, detail="Items not found")
 
     try:
         person, _ = await run_in_threadpool(get_object, profile["photo_path"])
@@ -962,6 +1036,7 @@ async def visualize_outfit(body: VisualizeBody, authorization: Optional[str] = H
     await db.visualizations.insert_one({
         "id": str(uuid.uuid4()), "user_id": user["user_id"], "key": key, "item_ids": body.item_ids,
         "outfit_name": body.outfit_name, "storage_path": path, "created_at": now_utc(),
+        "photo_path": profile["photo_path"],
     })
     return {"storage_path": path, "cached": False}
 

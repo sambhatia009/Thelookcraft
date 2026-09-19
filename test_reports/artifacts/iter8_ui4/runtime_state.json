@@ -1,0 +1,46 @@
+{
+  "issues": [
+    {
+      "step": "lookbook flow A + share/save export",
+      "error": "lookbook image src does not include flow A viz path"
+    },
+    {
+      "step": "flow B save-first, patch same id, edit clears",
+      "error": "Page.click: Element is outside of the viewport\nCall log:\n  - waiting for locator(\"[data-testid=\\\"piece-swap-btn\\\"]\")\n    - locator resolved to <div tabindex=\"0\" data-testid=\"piece-swap-btn\" class=\"css-view-g5y9jx r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderTopColor-1hqaikw r-borderTopWidth-5kkj8d r-flexDirection-18u37iz r-gap-1ssbvtb r-minHeight-adacv r-paddingBlock-1mmae3n\">\u2026</div>\n  - attempting click action\n    - scrolling into view if needed\n    - done scrolling\n"
+    },
+    {
+      "step": "lookbook count + abort/retry + tab + relogin",
+      "error": "Page.wait_for_selector: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"[data-testid=\\\"lookbook-try-on-a731ceaf-7dbf-461d-ab76-365358e836d3-error\\\"]\") to be visible\n"
+    },
+    {
+      "step": "no-image card regression actions",
+      "error": "Page.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"[data-testid=\\\"share-outfit-title-d92ee349-0226-45f5-a463-0b0c858bc1f5\\\"]\")\n"
+    }
+  ],
+  "state": {
+    "a": {
+      "viz_path": "stylevault/uploads/user_955795d8bb98/looks/4e77ede8-b358-4dc2-9440-24317b92096e.jpg",
+      "id": "a731ceaf-7dbf-461d-ab76-365358e836d3",
+      "path": "stylevault/uploads/user_955795d8bb98/looks/4e77ede8-b358-4dc2-9440-24317b92096e.jpg",
+      "occasion": "Weekend",
+      "lookbook_src": null
+    },
+    "b": {
+      "created_id": "d92ee349-0226-45f5-a463-0b0c858bc1f5",
+      "created_occasion": "Date",
+      "patched_id": "d92ee349-0226-45f5-a463-0b0c858bc1f5",
+      "patched_occasion": "Date"
+    },
+    "counts": {
+      "before": 17,
+      "after": 36
+    }
+  },
+  "console": [
+    "info: %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+    "log: Running application \"main\" with appParams:\n {rootTag: #root, hydrate: undefined} \nDevelopment-level warnings: ON.\nPerformance optimizations: OFF.",
+    "error: Failed to load resource: net::ERR_FAILED",
+    "warning: Disconnected from Metro (1006)\nTo reconnect:\n- Ensure that Metro is running and available on the same network\n- Reload this app (will trigger further help if Metro cannot be connected to)"
+  ],
+  "page_errors": []
+}

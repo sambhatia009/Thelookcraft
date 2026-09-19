@@ -99,6 +99,7 @@ export type Outfit = {
   occasion?: string;
   items: Item[];
   item_ids: string[];
+  visualization_path?: string | null;
   wear_count?: number;
   created_at: string;
 };
@@ -160,10 +161,11 @@ export const api = {
   taste: (): Promise<{ liked: number; disliked: number; avoided_items: Item[] }> => req("/stylist/taste"),
 
   outfits: (): Promise<Outfit[]> => req("/outfits"),
-  saveOutfit: (payload: { title: string; item_ids: string[]; stylist_note?: string; occasion?: string }) =>
+  saveOutfit: (payload: { title: string; item_ids: string[]; stylist_note?: string; occasion?: string; visualization_path?: string | null }): Promise<Outfit> =>
     req("/outfits", { method: "POST", json: payload }),
-  updateOutfit: (id: string, patch: { occasion?: string; title?: string }): Promise<Outfit> =>
+  updateOutfit: (id: string, patch: { occasion?: string; title?: string; visualization_path?: string }): Promise<Outfit> =>
     req(`/outfits/${id}`, { method: "PATCH", json: patch }),
+  visualizeOutfit: (id: string): Promise<Outfit> => req(`/outfits/${id}/visualize`, { method: "POST" }),
   deleteOutfit: (id: string) => req(`/outfits/${id}`, { method: "DELETE" }),
   wearOutfit: (id: string) => req(`/outfits/${id}/wear`, { method: "POST" }),
   wearItem: (id: string): Promise<Item> => req(`/items/${id}/wear`, { method: "POST" }),

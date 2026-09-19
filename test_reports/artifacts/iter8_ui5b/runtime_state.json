@@ -1,0 +1,32 @@
+{
+  "aid": "a731ceaf-7dbf-461d-ab76-365358e836d3",
+  "issues": [],
+  "console": [
+    "debug: #1 0ms Starting document clone with size 390x844 scrolled to 0,0",
+    "debug: #1 765ms Document cloned, element located at 0,-675 with size 390x1027 using computed rendering",
+    "debug: #1 765ms Starting DOM parsing",
+    "debug: #1 775ms Added image https://stylevault-app.preview.emergentagent.com/api/files/stylevault/uploads/user_955795d8bb98/looks/4e77ede8-b358-4dc2-9440-24317b92096e.jpg?token=sv_f5077440a69242b2a78a07e73dd92a0f",
+    "debug: #1 781ms Added image https://images.unsplash.com/photo-1581655353564-df123a1eb820?crop=entropy&cs=srgb&fm=jpg&w=800&q=80",
+    "debug: #1 783ms Added image https://images.pexels.com/photos/1082529/pexels-photo-1082529.jpeg?auto=compress&cs=tinysrgb&w=800",
+    "debug: #1 785ms Added image https://images.pexels.com/photos/2529148/pexels-photo-2529148.jpeg?auto=compress&cs=tinysrgb&w=800",
+    "debug: #1 786ms Added image https://images.pexels.com/photos/1240892/pexels-photo-1240892.jpeg?auto=compress&cs=tinysrgb&w=800",
+    "debug: #1 791ms Starting renderer for element at 0,-675 with size 390x1027",
+    "debug: #1 792ms Canvas renderer initialized (390x1027) with scale 1",
+    "debug: #1 1355ms Finished rendering",
+    "debug: #2 0ms Starting document clone with size 390x844 scrolled to 0,0",
+    "debug: #2 730ms Document cloned, element located at 0,-675 with size 390x1027 using computed rendering",
+    "debug: #2 730ms Starting DOM parsing",
+    "debug: #2 732ms Added image https://stylevault-app.preview.emergentagent.com/api/files/stylevault/uploads/user_955795d8bb98/looks/4e77ede8-b358-4dc2-9440-24317b92096e.jpg?token=sv_f5077440a69242b2a78a07e73dd92a0f",
+    "debug: #2 736ms Added image https://images.unsplash.com/photo-1581655353564-df123a1eb820?crop=entropy&cs=srgb&fm=jpg&w=800&q=80",
+    "debug: #2 737ms Added image https://images.pexels.com/photos/1082529/pexels-photo-1082529.jpeg?auto=compress&cs=tinysrgb&w=800",
+    "debug: #2 739ms Added image https://images.pexels.com/photos/2529148/pexels-photo-2529148.jpeg?auto=compress&cs=tinysrgb&w=800",
+    "debug: #2 740ms Added image https://images.pexels.com/photos/1240892/pexels-photo-1240892.jpeg?auto=compress&cs=tinysrgb&w=800",
+    "debug: #2 744ms Starting renderer for element at 0,-675 with size 390x1027",
+    "debug: #2 745ms Canvas renderer initialized (390x1027) with scale 1",
+    "debug: #2 1039ms Finished rendering",
+    "info: %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+    "log: Running application \"main\" with appParams:\n {rootTag: #root, hydrate: undefined} \nDevelopment-level warnings: ON.\nPerformance optimizations: OFF.",
+    "error: Failed to load resource: net::ERR_FAILED"
+  ],
+  "page_errors": []
+}

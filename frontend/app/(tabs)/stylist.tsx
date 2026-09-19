@@ -12,7 +12,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Image } from "expo-image";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import {
   ArrowsLeftRight,
@@ -31,9 +30,10 @@ import {
 } from "phosphor-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, imageUri, Item, OutfitResult } from "@/src/api";
+import { api, Item, OutfitResult } from "@/src/api";
 import { ItemThumb } from "@/src/components/item-thumb";
 import { OccasionSheet } from "@/src/components/occasion-sheet";
+import { TryOnPreview } from "@/src/components/try-on-preview";
 import { usesNativeTabs } from "@/src/navigation";
 import { consumeStylistFocus, usePendingStylistFocus } from "@/src/stylist-focus";
 import { useToast } from "@/src/toast";
@@ -45,6 +45,8 @@ type ResultMsg = {
   kind: "result";
   result: OutfitResult;
   saved?: boolean;
+  savedOutfitId?: string;
+  saving?: boolean;
   edited?: boolean;
   id: string;
   prompt: string;
@@ -194,6 +196,7 @@ export default function Stylist() {
 
   /** Nano Banana try-on: renders the look on the user's profile photo. */
   const visualize = async (msg: ResultMsg) => {
+    if (msg.vizLoading || msg.saving) return;
     if (!profile?.photo_path) {
       show("Add your photo in Profile first", "error", { label: "Go", onPress: () => router.push("/(tabs)/profile") });
       return;
@@ -201,7 +204,8 @@ export default function Stylist() {
     patchMsg(msg.id, { vizLoading: true });
     try {
       const res = await api.visualize(msg.result.item_ids, msg.result.outfit_name);
-      patchMsg(msg.id, { vizPath: res.storage_path, vizLoading: false });
+      setMessages((prev) => prev.map((x) => x.kind === "result" && x.id === msg.id && x.result.item_ids.join() === msg.result.item_ids.join()
+        ? { ...x, vizPath: res.storage_path, vizLoading: false, saved: false } : x));
     } catch (e: any) {
       patchMsg(msg.id, { vizLoading: false });
       show(e?.message || "Could not create the try-on image", "error");
@@ -229,7 +233,8 @@ export default function Stylist() {
       m.map((x) => {
         if (x.kind !== "result" || x.id !== msgId) return x;
         const nextItems = mutate(x.result.items);
-        return { ...x, saved: false, edited: true, result: { ...x.result, items: nextItems, item_ids: nextItems.map((i) => i.id) } };
+        if (nextItems.map((i) => i.id).join() === x.result.item_ids.join()) return x;
+        return { ...x, saved: false, savedOutfitId: undefined, vizPath: null, vizLoading: false, edited: true, result: { ...x.result, items: nextItems, item_ids: nextItems.map((i) => i.id) } };
       }),
     );
   };
@@ -269,19 +274,26 @@ export default function Stylist() {
   };
 
   const saveOutfit = async (msg: ResultMsg, occasion: string) => {
+    if (msg.saving || msg.vizLoading || msg.saved) return;
+    patchMsg(msg.id, { saving: true });
     try {
-      await api.saveOutfit({
+      const saved = msg.savedOutfitId && msg.vizPath
+        ? await api.updateOutfit(msg.savedOutfitId, { visualization_path: msg.vizPath })
+        : await api.saveOutfit({
         title: msg.result.outfit_name,
         item_ids: msg.result.item_ids,
         stylist_note: msg.result.stylist_note,
         occasion,
+        visualization_path: msg.vizPath || null,
       });
-      setMessages((m) => m.map((x) => (x.kind === "result" && x.id === msg.id ? { ...x, saved: true } : x)));
+      setMessages((m) => m.map((x) => (x.kind === "result" && x.id === msg.id && x.result.item_ids.join() === msg.result.item_ids.join()
+        ? { ...x, saved: true, saving: false, savedOutfitId: saved.id } : x)));
       qc.invalidateQueries({ queryKey: ["outfits"] });
       qc.invalidateQueries({ queryKey: ["insights"] });
-      show(occasion ? `Saved to lookbook · ${occasion.toUpperCase()}` : "Saved to lookbook", "success");
-    } catch {
-      show("Could not save outfit", "error");
+      show(msg.vizPath ? "Look and try-on saved to Lookbook" : occasion ? `Saved to lookbook · ${occasion.toUpperCase()}` : "Saved to lookbook", "success");
+    } catch (e: any) {
+      patchMsg(msg.id, { saving: false, ...(e?.status === 404 ? { savedOutfitId: undefined } : {}) });
+      show(e?.message || "Could not save outfit", "error");
     }
   };
 
@@ -376,7 +388,7 @@ export default function Stylist() {
               msg={m}
               busy={generate.isPending}
               canVisualize={!!profile?.photo_path}
-              onSave={() => setTagging(m)}
+              onSave={() => m.savedOutfitId && m.vizPath ? saveOutfit(m, "") : setTagging(m)}
               onRetry={() => tryAnother(m)}
               onDismiss={() => dismiss(m.id)}
               onPiece={(item) => setPieceTarget({ msgId: m.id, item })}
@@ -461,7 +473,7 @@ export default function Stylist() {
         extraTags={customTags}
         onClose={() => setTagging(null)}
         onConfirm={(occasion) => {
-          const msg = tagging;
+          const msg = messages.find((m): m is ResultMsg => m.kind === "result" && m.id === tagging?.id);
           setTagging(null);
           if (msg) saveOutfit(msg, occasion);
         }}
@@ -525,7 +537,7 @@ function ResultCard({
   const styles = useStyles();
   const { colors } = useTheme();
   const r = msg.result;
-  const vizUri = msg.vizPath ? imageUri({ storage_path: msg.vizPath }) : undefined;
+  const editingLocked = !!msg.vizLoading || !!msg.saving;
   return (
     <View style={styles.resultCard} testID="outfit-result">
       <View style={styles.resultHead}>
@@ -540,7 +552,7 @@ function ResultCard({
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.compositeRow}>
         {r.items.map((it) => (
           <View key={it.id} style={styles.compositeItem}>
-            <Pressable style={styles.compositeThumb} onPress={() => onPiece(it)} testID={`piece-${it.id}`}>
+            <Pressable style={styles.compositeThumb} onPress={() => onPiece(it)} disabled={editingLocked} testID={`piece-${it.id}`}>
               <ItemThumb item={it} />
               <View style={styles.swapBadge}>
                 <DotsThree color={colors.onBrandPrimary} size={14} weight="bold" />
@@ -551,23 +563,25 @@ function ResultCard({
             </Text>
           </View>
         ))}
-        <Pressable style={styles.addTile} onPress={onAdd} testID="add-piece-btn">
+        <Pressable style={styles.addTile} onPress={onAdd} disabled={editingLocked} testID="add-piece-btn">
           <Plus color={colors.onSurface} size={22} weight="bold" />
           <Text style={styles.addTileText}>ADD PIECE</Text>
         </Pressable>
       </ScrollView>
 
       {/* Try-on visual */}
-      {vizUri ? (
-        <View style={styles.vizBox} testID="viz-image">
-          <Image source={{ uri: vizUri }} style={styles.vizImage} contentFit="cover" transition={300} />
-          <Text style={styles.vizCaption}>VISUALISED ON YOU · AI RENDER</Text>
+      {msg.vizPath ? (
+        <View style={styles.vizWrap}>
+          <TryOnPreview key={msg.vizPath} path={msg.vizPath} testID={`stylist-try-on-${msg.id}`} />
+          <Text style={styles.vizSaveHint} testID={`try-on-save-hint-${msg.id}`}>
+            {msg.saved ? "LOOK + TRY-ON SAVED IN LOOKBOOK" : "SAVE THIS TRY-ON TO KEEP IT IN YOUR LOOKBOOK"}
+          </Text>
         </View>
       ) : (
         <Pressable
           style={[styles.vizBtn, msg.vizLoading && { opacity: 0.6 }]}
           onPress={onVisualize}
-          disabled={msg.vizLoading}
+          disabled={editingLocked}
           testID="visualize-btn"
         >
           {msg.vizLoading ? <ActivityIndicator color={colors.onSurface} size="small" /> : <UserFocus color={colors.onSurface} size={18} weight="bold" />}
@@ -605,7 +619,7 @@ function ResultCard({
           <Pressable
             style={[styles.thumbBtn, msg.feedback === "down" && styles.thumbBtnOn]}
             onPress={() => onRate("down")}
-            disabled={busy}
+            disabled={busy || editingLocked}
             testID="feedback-down-btn"
             hitSlop={4}
           >
@@ -616,13 +630,14 @@ function ResultCard({
 
       <View style={styles.actions}>
         <Button
-          title={msg.saved ? "Saved ✓" : "Save Outfit"}
+          title={msg.saved ? "Saved ✓" : msg.vizPath ? "Save Try-On" : "Save Outfit"}
           onPress={onSave}
-          disabled={msg.saved}
+          disabled={msg.saved || msg.vizLoading}
+          loading={msg.saving}
           testID="save-outfit-btn"
-          style={{ flex: 1 }}
+          style={{ flex: 1, paddingHorizontal: spacing.sm }}
         />
-        <Button title="Try Another" variant="outline" onPress={onRetry} disabled={busy} testID="try-another-btn" style={{ flex: 1 }} />
+        <Button title="Try Another" variant="outline" onPress={onRetry} disabled={busy || editingLocked} testID="try-another-btn" style={{ flex: 1, paddingHorizontal: spacing.sm }} />
       </View>
       <Pressable onPress={onAddMissing} style={styles.addMissing} testID="add-missing-btn">
         <Text style={styles.addMissingText}>ADD MISSING ITEM</Text>
@@ -789,6 +804,8 @@ const useStyles = makeStyles((c) => ({
   vizBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, marginHorizontal: spacing.lg, marginBottom: spacing.lg, height: 48, borderWidth: 1, borderColor: c.borderStrong, backgroundColor: c.surfaceTertiary },
   vizBtnText: { fontSize: 11, fontWeight: "800", letterSpacing: 1, color: c.onSurface },
   vizBox: { marginHorizontal: spacing.lg, marginBottom: spacing.lg, borderWidth: 1, borderColor: c.borderStrong },
+  vizWrap: { marginBottom: spacing.lg, gap: spacing.sm },
+  vizSaveHint: { marginHorizontal: spacing.lg, color: c.muted, fontSize: 10, lineHeight: 16, letterSpacing: 1, textAlign: "center" },
   vizImage: { width: "100%", aspectRatio: 3 / 4, backgroundColor: c.surfaceTertiary },
   vizCaption: { padding: spacing.sm, fontSize: 9, letterSpacing: 2, fontWeight: "800", color: c.muted, textAlign: "center" },
   feedbackRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginHorizontal: spacing.lg, marginBottom: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: c.border },

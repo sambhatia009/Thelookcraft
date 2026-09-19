@@ -6,10 +6,12 @@ import { captureRef } from "react-native-view-shot";
 import * as Sharing from "expo-sharing";
 import { CheckCircle, DownloadSimple, Export, Tag, Trash } from "phosphor-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 
 import { api, Outfit } from "@/src/api";
 import { ItemThumb } from "@/src/components/item-thumb";
 import { OccasionSheet, OCCASIONS } from "@/src/components/occasion-sheet";
+import { TryOnPreview } from "@/src/components/try-on-preview";
 import { usesNativeTabs } from "@/src/navigation";
 import { openPhotoSettings, saveToPhotos } from "@/src/save-to-photos";
 import { useToast } from "@/src/toast";
@@ -27,6 +29,9 @@ export default function Lookbook() {
   const [filter, setFilter] = useState("All");
   const [tagging, setTagging] = useState<Outfit | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [visualizing, setVisualizing] = useState<Record<string, boolean>>({});
+  const [visualizeErrors, setVisualizeErrors] = useState<Record<string, string>>({});
+  const [readyImages, setReadyImages] = useState<Record<string, string | null>>({});
 
   const { data, isLoading, isError, refetch, isRefetching } = useQuery<Outfit[]>({
     queryKey: ["outfits"],
@@ -42,6 +47,25 @@ export default function Lookbook() {
   }, [data]);
 
   const customTags = tags.filter((t) => !OCCASIONS.includes(t) && t !== "Untagged");
+
+  const visualize = async (outfit: Outfit) => {
+    if (visualizing[outfit.id]) return;
+    setVisualizing((prev) => ({ ...prev, [outfit.id]: true }));
+    setVisualizeErrors((prev) => ({ ...prev, [outfit.id]: "" }));
+    try {
+      const updated = await api.visualizeOutfit(outfit.id);
+      qc.setQueryData<Outfit[]>(["outfits"], (prev) => prev?.map((o) => o.id === outfit.id ? updated : o));
+      qc.invalidateQueries({ queryKey: ["outfits"] });
+      show("Try-on saved with your look", "success");
+    } catch (e: any) {
+      const message = e?.message || "Could not create try-on. Please try again.";
+      setVisualizeErrors((prev) => ({ ...prev, [outfit.id]: message }));
+      show(message, "error", /photo.*Profile/i.test(message)
+        ? { label: "Add photo", onPress: () => router.push("/(tabs)/profile") } : undefined);
+    } finally {
+      setVisualizing((prev) => ({ ...prev, [outfit.id]: false }));
+    }
+  };
 
   const visible = useMemo(() => {
     if (!data) return data;
@@ -89,8 +113,13 @@ export default function Lookbook() {
   };
 
   const capture = async (item: Outfit) => {
+    if (visualizing[item.id] || (item.visualization_path && readyImages[item.id] !== item.visualization_path)) {
+      throw new Error("Wait for your try-on image to load before sharing.");
+    }
     const ref = shotRefs.current[item.id];
     if (!ref) throw new Error("no ref");
+    // Let the loaded image's aspect ratio/layout commit before native capture.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     return captureRef(ref, {
       format: "png",
       quality: 1,
@@ -99,6 +128,8 @@ export default function Lookbook() {
   };
 
   const share = async (item: Outfit) => {
+    if (busy) return;
+    setBusy(item.id);
     try {
       const uri = await capture(item);
       if (Platform.OS === "web") {
@@ -112,7 +143,9 @@ export default function Lookbook() {
         show("Sharing not available", "error");
       }
     } catch {
-      show("Could not create share image", "error");
+      show("Could not create share image. Please try again.", "error");
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -143,32 +176,65 @@ export default function Lookbook() {
         }}
         collapsable={false}
         style={styles.shot}
+        testID={`share-card-${item.id}`}
       >
         <View style={styles.cardHead}>
-          <Text style={[styles.cardTitle, { flex: 1 }]}>{item.title.toUpperCase()}</Text>
+          <Text style={[styles.cardTitle, { flex: 1 }]} testID={`outfit-title-${item.id}`}>{item.title.toUpperCase()}</Text>
           {!!item.occasion && (
             <Text style={styles.occasionBadge} testID={`occasion-badge-${item.id}`}>
               {item.occasion.toUpperCase()}
             </Text>
           )}
         </View>
+        {!!item.visualization_path && (
+          <TryOnPreview key={item.visualization_path} path={item.visualization_path} testID={`lookbook-try-on-${item.id}`}
+            onReady={(ready) => setReadyImages((prev) => {
+              const next = ready ? item.visualization_path! : null;
+              return prev[item.id] === next ? prev : { ...prev, [item.id]: next };
+            })} />
+        )}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
           {item.items.map((it) => (
-            <View key={it.id} style={styles.thumb}>
+            <View key={it.id} style={[styles.thumb, !!item.visualization_path && styles.smallThumb]}>
               <ItemThumb item={it} />
             </View>
           ))}
         </ScrollView>
-        {!!item.stylist_note && <Text style={styles.note}>{item.stylist_note}</Text>}
+        {!!item.stylist_note && <Text style={styles.note} testID={`outfit-note-${item.id}`}>{item.stylist_note}</Text>}
         <View style={styles.itemList}>
           {item.items.map((it) => (
-            <Text key={it.id} style={styles.itemLine}>
+            <Text key={it.id} style={styles.itemLine} testID={`outfit-piece-${item.id}-${it.id}`}>
               · {it.name}
             </Text>
           ))}
         </View>
-        <Text style={styles.watermark}>STYLEVAULT</Text>
+        <Text style={styles.watermark} testID={`outfit-watermark-${item.id}`}>STYLEVAULT</Text>
       </View>
+
+      {!item.visualization_path ? (
+        <View style={styles.tryOnSection}>
+          <Pressable testID={`visualize-outfit-${item.id}`} accessibilityRole="button"
+            disabled={visualizing[item.id] || !!busy} onPress={() => visualize(item)}
+            style={({ pressed }) => [styles.tryOnButton, (pressed || visualizing[item.id]) && styles.dimmed]}>
+            {visualizing[item.id] ? <ActivityIndicator color={colors.onSurface} testID={`visualizing-outfit-${item.id}`} />
+              : <Ionicons name="person-outline" color={colors.onSurface} size={20} />}
+            <Text style={styles.tryOnLabel} testID={`visualize-label-${item.id}`}>
+              {visualizing[item.id] ? "CREATING YOUR TRY-ON…" : visualizeErrors[item.id] ? "TRY VISUALISING AGAIN" : "VISUALISE ON ME"}
+            </Text>
+          </Pressable>
+          <Text style={styles.tryOnHint} testID={`visualize-hint-${item.id}`}>
+            {visualizing[item.id] ? "This may take a moment. Your image will save here automatically." : "Uses your Profile photo · saves with this look"}
+          </Text>
+          {!!visualizeErrors[item.id] && <Text style={styles.tryOnError} testID={`visualize-error-${item.id}`}>{visualizeErrors[item.id]}</Text>}
+          {/photo.*Profile/i.test(visualizeErrors[item.id] || "") && (
+            <Pressable style={styles.profileButton} testID={`add-try-on-photo-${item.id}`} onPress={() => router.push("/(tabs)/profile")}>
+              <Text style={styles.tryOnLabel}>ADD YOUR PHOTO IN PROFILE</Text>
+            </Pressable>
+          )}
+        </View>
+      ) : (
+        <Text style={styles.savedHint} testID={`try-on-saved-${item.id}`}>TRY-ON SAVED · INCLUDED IN SHARE & SAVE</Text>
+      )}
 
       <View style={styles.metaRow}>
         <Pressable style={styles.tagBtn} onPress={() => setTagging(item)} testID={`tag-outfit-${item.id}`} hitSlop={6}>
@@ -183,11 +249,12 @@ export default function Lookbook() {
       </View>
 
       <View style={styles.cardActions}>
-        <Action icon={<Export color={colors.onSurface} size={18} weight="bold" />} label="SHARE" onPress={() => share(item)} testID={`share-outfit-${item.id}`} />
-        <Action icon={<DownloadSimple color={colors.onSurface} size={18} weight="bold" />} label="SAVE" onPress={() => save(item)} testID={`save-photos-${item.id}`} disabled={busy === item.id} />
-        <Action icon={<CheckCircle color={colors.onSurface} size={18} weight="bold" />} label="WEAR" onPress={() => wear(item)} testID={`wear-outfit-${item.id}`} disabled={busy === item.id} />
-        <Action icon={<Trash color={colors.onSurface} size={18} weight="bold" />} label="DELETE" onPress={() => remove(item.id)} testID={`delete-outfit-${item.id}`} />
+        <Action icon={<Export color={colors.onSurface} size={18} weight="bold" />} label="SHARE" onPress={() => share(item)} testID={`share-outfit-${item.id}`} disabled={!!busy || visualizing[item.id] || (!!item.visualization_path && readyImages[item.id] !== item.visualization_path)} />
+        <Action icon={<DownloadSimple color={colors.onSurface} size={18} weight="bold" />} label="SAVE" onPress={() => save(item)} testID={`save-photos-${item.id}`} disabled={!!busy || visualizing[item.id] || (!!item.visualization_path && readyImages[item.id] !== item.visualization_path)} />
+        <Action icon={<CheckCircle color={colors.onSurface} size={18} weight="bold" />} label="WEAR" onPress={() => wear(item)} testID={`wear-outfit-${item.id}`} disabled={!!busy || visualizing[item.id]} />
+        <Action icon={<Trash color={colors.onSurface} size={18} weight="bold" />} label="DELETE" onPress={() => remove(item.id)} testID={`delete-outfit-${item.id}`} disabled={!!busy || visualizing[item.id]} />
       </View>
+      {busy === item.id && <ActivityIndicator style={styles.actionProgress} color={colors.onSurface} testID={`outfit-action-loading-${item.id}`} />}
     </View>
   );
 
@@ -227,6 +294,7 @@ export default function Lookbook() {
               data={visible}
               keyExtractor={(o) => o.id}
               renderItem={renderCard}
+              removeClippedSubviews={false}
               onRefresh={refetch}
               refreshing={isRefetching}
               ItemSeparatorComponent={() => <View style={styles.hairlineStrong} />}
@@ -254,9 +322,9 @@ export default function Lookbook() {
 function Action({ icon, label, onPress, testID, disabled }: { icon: React.ReactNode; label: string; onPress: () => void; testID: string; disabled?: boolean }) {
   const styles = useStyles();
   return (
-    <Pressable style={[styles.actionBtn, disabled && { opacity: 0.5 }]} onPress={onPress} testID={testID} disabled={disabled}>
+    <Pressable style={({ pressed }) => [styles.actionBtn, (disabled || pressed) && styles.dimmed]} onPress={onPress} testID={testID} disabled={disabled} accessibilityRole="button">
       {icon}
-      <Text style={styles.actionText}>{label}</Text>
+      <Text style={styles.actionText} testID={`${testID}-label`}>{label}</Text>
     </Pressable>
   );
 }
@@ -277,12 +345,22 @@ const useStyles = makeStyles((c) => ({
   occasionBadge: { fontSize: 10, fontWeight: "900", letterSpacing: 2, color: c.onBrandPrimary, backgroundColor: c.brandPrimary, paddingHorizontal: spacing.sm, paddingVertical: 4, marginTop: 4 },
   row: { gap: 1, paddingHorizontal: spacing.lg },
   thumb: { width: 150, height: 190, backgroundColor: c.surfaceTertiary, borderWidth: 1, borderColor: c.border },
+  smallThumb: { width: 74, height: 94 },
+  tryOnSection: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, gap: spacing.sm },
+  tryOnButton: { minHeight: 52, padding: spacing.md, flexDirection: "row", gap: spacing.sm, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: c.borderStrong, backgroundColor: c.surfaceTertiary },
+  tryOnLabel: { fontSize: 11, fontWeight: "800", letterSpacing: 1, color: c.onSurface, flexShrink: 1 },
+  tryOnHint: { fontSize: 12, lineHeight: 18, color: c.muted },
+  tryOnError: { fontSize: 12, lineHeight: 18, color: c.error },
+  profileButton: { minHeight: 44, justifyContent: "center" },
+  savedHint: { fontSize: 10, letterSpacing: 1, color: c.muted, marginHorizontal: spacing.lg, marginBottom: spacing.md },
+  dimmed: { opacity: 0.5 },
+  actionProgress: { marginTop: spacing.md },
   note: { paddingHorizontal: spacing.lg, fontSize: fontSize.base, color: c.onSurfaceSecondary, lineHeight: 21 },
   itemList: { paddingHorizontal: spacing.lg, gap: 2 },
   itemLine: { fontSize: fontSize.sm, color: c.muted, letterSpacing: 0.5 },
   watermark: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, fontSize: 11, letterSpacing: 4, color: c.muted, fontWeight: "800" },
   metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, marginTop: spacing.xs, marginBottom: spacing.sm, minHeight: 32 },
-  tagBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs, height: 32, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceTertiary },
+  tagBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs, height: 44, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceTertiary },
   tagBtnText: { fontSize: 10, fontWeight: "800", letterSpacing: 1, color: c.onSurface },
   wornCount: { fontSize: 10, fontWeight: "800", letterSpacing: 1, color: c.muted },
   cardActions: { flexDirection: "row", gap: spacing.xs, paddingHorizontal: spacing.lg },

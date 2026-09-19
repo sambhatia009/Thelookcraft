@@ -6,7 +6,7 @@ Build "StyleVault", a mobile-first AI Personal Stylist & Virtual Wardrobe app. U
 ## Architecture
 - **Frontend:** Expo React Native (expo-router file routing), react-query, react-native-reanimated, expo-image, phosphor icons. Monochrome brutalist theme (light+dark) in `src/theme.ts`.
 - **Backend:** FastAPI + MongoDB (motor). Bearer session tokens (7-day) in `user_sessions`.
-- **AI:** Gemini 3 Flash via emergentintegrations (`EMERGENT_LLM_KEY`) for vision auto-tagging + stylist outfit generation (structured JSON).
+- **AI:** Gemini 3 Flash for vision tags, Gemini 3.1 Pro for stylist outfits, Gemini 3.1 Flash Image for try-on via the existing emergentintegrations configuration.
 - **Storage:** Emergent Managed Object Storage for uploaded clothing cutouts; served via `/api/files/{path}` with per-user ownership check.
 - **Background removal:** `rembg` (u2net) produces transparent PNG cutouts on upload.
 
@@ -53,12 +53,24 @@ Build "StyleVault", a mobile-first AI Personal Stylist & Virtual Wardrobe app. U
 - **Visualise on me:** Profile "ABOUT YOU" (gender, age, full-body photo → `POST /api/profile/photo`, private storage); result card "VISUALISE ON ME" → `POST /api/stylist/visualize` composes user photo + garment references → editorial try-on image, cached per item-set, invalidated on photo change.
 - Verified: 20/20 backend pytest + frontend e2e (testing agent iteration 6) + manual 👎/visualise flows.
 
+## Added — Lookbook Try-On (verified)
+- Saved outfits support a private `visualization_path`. `POST /api/outfits/{id}/visualize` generates/reuses a real try-on and saves it to the existing outfit.
+- Lookbook offers Visualise on me, generation progress, retry and missing-photo navigation. The uncropped render is inside the share card and Save To Photos capture, with loading guards.
+- Stylist Save Try-On stores image + look together. Visualising an already-saved result enables updating that same Lookbook entry (no duplicate); editing pieces clears the obsolete render.
+- Backend validates image ownership and exact item-set match. Cache keys include the Profile photo; saved outfit images remain after photo replacement/removal.
+- New shared component: `src/components/try-on-preview.tsx` (native capture-safe image, loading/error retry). Existing no-render cards remain supported.
+- Verified: backend 9/9 (iteration 7); frontend iteration 8 confirms both Stylist save orders, no duplicate on save-first, occasion persistence, edit invalidation, re-login persistence, image retry without regeneration, and visually inspected 390×1027 share/save PNGs containing the full render/title/note/AI label/watermark.
+- Final manual follow-up confirms no-render Share/Save, tag editing, wear logging and deletion all pass. Older render reported with a transient fetch error returned 200/image content on 3/3 normal reads; error/retry UI is tested. See `test_reports/iteration_8_followup.json`.
+- Fixed during verification: stable React Native Image callbacks/source plus readiness no-op guard prevent render loops; native/web image-load dimension payloads handled separately without cropping.
+
 ## Backlog (prioritized)
+- **P0:** none outstanding for the Lookbook try-on feature.
 - **P1:** calendar/outfit planner; wear history timeline.
-- **P2:** cost-per-wear; visualise saved Lookbook looks; share try-on image.
+- **P2:** cost-per-wear; optional render-only share card layout.
 
 ## Next Tasks
 - Validate Save To Photos, location auto-refresh and share sheet on a real device build (not testable in Expo Go web preview).
+- Confirm new try-on share cards in iPhone/Android native share sheets and Photos, plus device-driven dark mode (web emulation was inconclusive).
 
 ## Bug fixes
 - **Stylist tab fixes:** (a) iOS 26 NativeTabs hid the composer/FAB behind the tab bar → native tabs disabled (`usesNativeTabs=false`), JS Tabs everywhere; (b) "Try Another" re-sends the same prompt with `avoid_item_ids` so Gemini proposes a different look; (c) result cards are editable: dismiss (X), tap piece → swap, remove badge, ADD PIECE tile, CLEAR CONVERSATION; edited looks reset Saved. (d) "Style around this" from item detail now hands off via `src/stylist-focus.ts` store + `router.dismissTo` (route params raced the modal dismiss on iOS).

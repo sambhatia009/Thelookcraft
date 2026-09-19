@@ -1,0 +1,31 @@
+{
+  "issues": [
+    {
+      "step": "flow A",
+      "error": "Page.click: Element is outside of the viewport\nCall log:\n  - waiting for locator(\"[data-testid=\\\"occasion-confirm\\\"]\")\n    - locator resolved to <div tabindex=\"0\" data-testid=\"occasion-confirm\" class=\"css-view-g5y9jx r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-height-102gzdx r-justifyContent-1777fci r-paddingInline-cxgwc0\">\u2026</div>\n  - attempting click action\n    - scrolling into view if needed\n    - done scrolling\n"
+    },
+    {
+      "step": "lookbook A + exports",
+      "error": "Timeout 30000ms exceeded while waiting for event \"response\""
+    },
+    {
+      "step": "flow B",
+      "error": "Page.click: Element is outside of the viewport\nCall log:\n  - waiting for locator(\"[data-testid=\\\"occasion-confirm\\\"]\")\n    - locator resolved to <div tabindex=\"0\" data-testid=\"occasion-confirm\" class=\"css-view-g5y9jx r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-height-102gzdx r-justifyContent-1777fci r-paddingInline-cxgwc0\">\u2026</div>\n  - attempting click action\n    - scrolling into view if needed\n    - done scrolling\n"
+    },
+    {
+      "step": "lookbook B + abort retry + relogin",
+      "error": "Timeout 30000ms exceeded while waiting for event \"response\""
+    }
+  ],
+  "state": {
+    "a": {
+      "viz_path": "stylevault/uploads/user_955795d8bb98/looks/4e77ede8-b358-4dc2-9440-24317b92096e.jpg"
+    },
+    "b": {},
+    "counts": {}
+  },
+  "console": [
+    "warning: Disconnected from Metro (1006)\nTo reconnect:\n- Ensure that Metro is running and available on the same network\n- Reload this app (will trigger further help if Metro cannot be connected to)"
+  ],
+  "page_errors": []
+}

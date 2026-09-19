@@ -1,0 +1,72 @@
+{
+  "summary": "Frontend-only iteration 8 completed. Core Lookbook + Stylist try-on flows are now working in web preview with persisted renders and valid share/save exports; previous runtime-loop regressions were not reproduced.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Lookbook image loading (older render path)",
+        "issue": "Observed intermittent file load failure in console (net::ERR_FAILED on one /api/files/.../looks/... path). Retry path worked and exports still succeeded.",
+        "affected_testIDs": [
+          "lookbook-try-on-{id}-image",
+          "lookbook-try-on-{id}-retry"
+        ]
+      },
+      {
+        "flow": "No-image card regression",
+        "issue": "Could not fully execute no-image card action matrix in final stable run because no no-image outfit card was available in current visible set.",
+        "affected_testIDs": [
+          "share-outfit-{id}",
+          "save-photos-{id}",
+          "tag-outfit-{id}",
+          "wear-outfit-{id}",
+          "delete-outfit-{id}"
+        ]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "Lookbook 390x844 dark mode check",
+        "issues": [
+          "Dark-mode emulation screenshot was captured, but web preview remained visually close to light theme (likely env/device-theme behavior in preview)."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/artifacts/iter8_ui4/runtime_state.json",
+    "/app/test_reports/artifacts/iter8_ui5b/runtime_state.json",
+    "/app/test_reports/artifacts/iter8_flowb_edit2/runtime_state.json",
+    "/app/test_reports/artifacts/iter8_ui5b/share_a.png",
+    "/app/test_reports/artifacts/iter8_ui5b/save_a.png",
+    "/app/test_reports/artifacts/iter8_dark/lookbook_dark.jpg",
+    "/root/.emergent/automation_output/20260919_141310/console_20260919_141310.log",
+    "/root/.emergent/automation_output/20260919_141531/console_20260919_141531.log"
+  ],
+  "action_items": [
+    "Investigate intermittent /api/files look image load failures seen on one saved render path, even though retry recovers.",
+    "If strict dark mode verification is required, validate on a device/browser setup where system theme toggling is guaranteed.",
+    "Run one additional focused pass with a guaranteed no-image card fixture to complete share/save/tag/wear/delete non-render regression matrix."
+  ],
+  "critical_code_review_comments": [
+    "TryOnPreview callback stabilization appears effective: no repeated 'Maximum update depth exceeded' loop observed in this run.",
+    "No 'nativeEvent.source' undefined crash reproduced during tested visualize/load/retry/export flows.",
+    "Flow B backend contract behaved correctly from UI evidence: Save Outfit first then Save Try-On patched same outfit id and preserved occasion."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_8.json"
+  ],
+  "success_rate": {
+    "backend": "NA (skipped per request)",
+    "frontend": "88%"
+  },
+  "seed_data_creation": "No new users created. Used existing QA account lookbook.tryon.qa@example.com and existing wardrobe/profile fixtures.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Validated on public URL with 390x844 mobile viewport. Verified: Flow A persisted same visualization path (stylevault/uploads/user_955795d8bb98/looks/4e77ede8-b358-4dc2-9440-24317b92096e.jpg) through Lookbook and relogin; Flow B save-first then visualize patched same id (d92ee349-0226-45f5-a463-0b0c858bc1f5) and preserved occasion; edit (add-piece) cleared stale try-on/saved-link state in Stylist card. Share + Save exports generated 390x1027 PNG artifacts and were visually inspected.",
+  "rca_of_issue": "Prior blocking regression (iteration 7) was not reproducible in this cycle. Remaining instability appears to be intermittent file fetch failure on specific look image URLs in web preview (console net::ERR_FAILED), not a render-loop/state recursion issue. Retry path restored the affected card and did not trigger additional /api/outfits/{id}/visualize POST calls in the forced-abort scenario."
+}

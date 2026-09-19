@@ -1,0 +1,16 @@
+{
+  "summary": "Main-agent follow-up closed the remaining iteration 8 core validation gaps.",
+  "results": {
+    "older_render_normal_fetch": "PASS: three authenticated GETs returned 200, image content type and nonempty image body",
+    "no_render_share": "PASS: QA_Classic_Card.png downloaded",
+    "no_render_save": "PASS: QA_Classic_Card.png downloaded",
+    "no_render_tag": "PASS: changed to Work via occasion sheet",
+    "no_render_wear": "PASS: WORN 1x rendered",
+    "no_render_delete": "PASS: card removed and GET outfits confirms absence",
+    "fixture_cleanup": "PASS: temporary no-render outfit deleted"
+  },
+  "screenshots": ["/tmp/lookbook-nonrender-regression.jpg"],
+  "console_log": "/root/.emergent/automation_output/20260919_142933/console_20260919_142933.log",
+  "remaining_device_checks": ["iPhone/Android native share sheet", "Photos permissions/write", "device-driven dark theme"],
+  "known_core_blockers": []
+}

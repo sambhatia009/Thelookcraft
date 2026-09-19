@@ -1,0 +1,44 @@
+{
+  "issues": [
+    {
+      "step": "Flow A generate/visualize/save",
+      "error": "Page.click: Element is outside of the viewport\nCall log:\n  - waiting for locator(\"[data-testid=\\\"occasion-Work\\\"]\")\n    - locator resolved to <div tabindex=\"0\" data-testid=\"occasion-Work\" class=\"css-view-g5y9jx r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderWidth-rs99b7 r-flexShrink-1q142lx r-height-1r8g8re r-justifyContent-1777fci r-paddingInline-3pj75a\">\u2026</div>\n  - attempting click action\n    - scrolling into view if needed\n    - done scrolling\n"
+    },
+    {
+      "step": "Lookbook Flow A persistence + exports",
+      "error": "'id'"
+    },
+    {
+      "step": "Flow B save-first/visualize/patch + edit invalidation",
+      "error": "Timeout 180000ms exceeded while waiting for event \"response\""
+    },
+    {
+      "step": "Lookbook B checks + no-image regression actions",
+      "error": "Timeout 30000ms exceeded while waiting for event \"response\""
+    },
+    {
+      "step": "Abort+retry, tab switch, relogin persistence",
+      "error": "'id'"
+    }
+  ],
+  "flow": {
+    "a": {
+      "viz_path": "stylevault/uploads/user_955795d8bb98/looks/e9ff15e7-a2e2-420d-bea2-8c391a246bb7.jpg"
+    },
+    "b": {},
+    "no_image": {},
+    "counts": {
+      "after_a": 1
+    }
+  },
+  "console_tail": [
+    "warning: Disconnected from Metro (1006)\nTo reconnect:\n- Ensure that Metro is running and available on the same network\n- Reload this app (will trigger further help if Metro cannot be connected to)"
+  ],
+  "page_errors": [],
+  "exports": [
+    "/app/test_reports/artifacts/iter8_ui2/share_flowA.png",
+    "/app/test_reports/artifacts/iter8_ui2/save_flowA.png",
+    "/app/test_reports/artifacts/iter8_ui2/share_no_image.png",
+    "/app/test_reports/artifacts/iter8_ui2/save_no_image.png"
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "issues": [
+    {
+      "step": "Open app and login",
+      "error": "Locator.count: 'Page' object has no attribute 'create_task'"
+    },
+    {
+      "step": "Go to Stylist tab",
+      "error": "Locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for get_by_text(\"Stylist\", exact=True).first\n"
+    },
+    {
+      "step": "Flow A: generate -> visualise -> save try-on",
+      "error": "Page.fill: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"[data-testid=\\\"stylist-input\\\"]\")\n"
+    },
+    {
+      "step": "Flow B: save outfit first -> visualise -> patch same id -> edit clears state",
+      "error": "Page.fill: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"[data-testid=\\\"stylist-input\\\"]\")\n"
+    },
+    {
+      "step": "Go to Lookbook tab",
+      "error": "Locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for get_by_text(\"Lookbook\", exact=True).first\n"
+    },
+    {
+      "step": "Lookbook: verify flow A render and export PNG downloads",
+      "error": "Missing flow A saved outfit id"
+    },
+    {
+      "step": "One-off image abort + retry restores image without regeneration",
+      "error": "Missing flow A id for retry test"
+    },
+    {
+      "step": "Tab switch + relogin persistence",
+      "error": "Locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for get_by_text(\"Stylist\", exact=True).first\n"
+    },
+    {
+      "step": "Capture dark-mode screenshot (390x844)",
+      "error": "Page.screenshot: options.quality is unsupported for the png screenshots"
+    }
+  ],
+  "api_state": {
+    "outfits": [],
+    "flow_a_viz": null,
+    "flow_a_save": null,
+    "flow_b_viz": null,
+    "flow_b_save_create": null,
+    "flow_b_save_patch": null,
+    "visualize_saved_calls": 0
+  },
+  "share_download_path": "/app/test_reports/artifacts/iter8_ui/share_flowA.png",
+  "save_download_path": "/app/test_reports/artifacts/iter8_ui/save_flowA.png",
+  "lookbook_render_shot": "/app/test_reports/artifacts/iter8_ui/lookbook_render_flowA.png",
+  "dark_mode_shot": "/app/test_reports/artifacts/iter8_ui/lookbook_dark_390x844.png"
+}

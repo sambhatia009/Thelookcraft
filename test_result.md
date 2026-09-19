@@ -101,3 +101,73 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: 'Lookbook Try-On: Add "Visualise on me" to saved looks and include the render in the share card. Also let users save visualised Stylist looks in Lookbook.'
+backend:
+  - task: "Persist try-on on saved looks and validate ownership/item match"
+    implemented: true
+    working: true
+    file: backend/server.py
+    stuck_count: 0
+    priority: high
+    needs_retesting: false
+    status_history:
+      - working: NA
+        agent: main
+        comment: "Added optional visualization_path on outfit create/patch/list, Pydantic response models, POST /api/outfits/{id}/visualize reuses real Gemini/storage and persists. Validation rejects foreign or mismatched paths and invalid pieces; profile-photo-scoped cache. Saved images survive profile-photo changes."
+      - working: true
+        agent: testing
+        comment: "Iteration 7 backend 9/9 PASS, real AI/storage, persistence and validation confirmed."
+frontend:
+  - task: "Lookbook try-on, loaded render in share/save card"
+    implemented: true
+    working: true
+    file: frontend/app/(tabs)/lookbook.tsx
+    stuck_count: 0
+    priority: high
+    needs_retesting: false
+    status_history:
+      - working: NA
+        agent: main
+        comment: "Added visualize button, automatic persistence, loading/retry/missing-photo Profile CTA; shared uncropped TryOnPreview is inside capture ref; share/save blocked while generating/loading. Existing no-image layout retained. Empty screen smoke PASS on 390x844."
+      - working: true
+        agent: main
+        comment: "Iteration 8 + final follow-up PASS: exported PNG visually inspected, image retry works, no runtime loop/crash, normal older-image reads 3/3. Non-render Share/Save/tag/wear/delete full regression PASS. Native device share/Photos follow-up remains."
+  - task: "Save visualised Stylist result into Lookbook"
+    implemented: true
+    working: true
+    file: frontend/app/(tabs)/stylist.tsx
+    stuck_count: 0
+    priority: high
+    needs_retesting: false
+    status_history:
+      - working: NA
+        agent: main
+        comment: "Save Try-On creates outfit including path. Save-before-visualise uses savedOutfitId to update same look without duplicate. Edits clear stale render and save link; loading locks edits and save."
+      - working: true
+        agent: testing
+        comment: "Iteration 8: visualise-first and save-first passed, same saved ID for updates, occasion preserved, editing clears old try-on/save state."
+metadata:
+  created_by: main
+  version: "1.0"
+  test_sequence: 8
+  run_ui: true
+test_plan:
+  current_focus:
+    - "Real Lookbook try-on and persistence after re-login"
+    - "Stylist visualise-before-save and save-before-visualise"
+    - "Share/Save downloaded image actually contains render, title and watermark"
+    - "No-photo, failure/retry, invalid/foreign render, deleted outfits, edit invalidation"
+    - "Existing tags, wear, delete and no-render card regression"
+  stuck_tasks: []
+  test_all: false
+  test_priority: high_first
+agent_communication:
+  - agent: main
+    message: "Read memory/test_credentials.md: lookbook.tryon.qa@example.com / pass1234 is CREATED and screenshot verified. Legacy demo login failed; do not use it. Use this dedicated account or document any new ones. No integrations mocked; real Gemini and private storage. Python/edited screen lints pass. Existing unrelated tsc errors in app/_layout.tsx typed routes, tabs icon color and theme ColorSchemeName predate edits (no new type errors). Verify actual downloaded PNG via image inspection, plus 390x844 screenshots. Native share/Photos permissions require device testing."
+  - agent: testing
+    message: "Iteration 7: backend 9/9 PASS. Frontend blocked by image-ready render loop; no-photo CTA/profile upload/real Lookbook generation passed. See test_reports/iteration_7.json."
+  - agent: main
+    message: "Critical loop fixed with stable Image callbacks/source plus parent readiness no-op guard. Also handled RN Web onLoad event target dimensions (native source differs). Self-test 390x844 PASS: existing render displays, Share exports 390x1027 PNG with 1159 sampled colors, Save also downloads; no runtime errors. Need remaining frontend Stylist A/B flows + exported PNG visual inspection + persistence/error-retry checks. Do not repeat expensive backend matrix. All iteration7 account credentials documented."
+  - agent: main
+    message: "All core acceptance checks complete after iteration8 and focused follow-up. Remaining report gaps closed: no-render fixture Shared/Saved, tag changed to Work, wear count reached1, delete confirmed by API; fixture removed. Older reported image returned200/image with nonempty body 3/3 normal reads. Native share sheet/Photos/device-dark-mode verification is the remaining manual-device follow-up, not a known broken flow."

@@ -1,0 +1,12 @@
+{
+  "issues": [
+    {
+      "step": "flowB with add-piece edit invalidation",
+      "error": "Locator.click: Element is outside of the viewport\nCall log:\n  - waiting for locator(\"[data-testid^=\\\"pick-\\\"]\").first\n    - locator resolved to <div tabindex=\"0\" data-testid=\"pick-0b5cd91e-e22a-4e5a-9562-fdd24780aa4d\" class=\"css-view-g5y9jx r-cursor-1loqt21 r-touchAction-1otgn73 r-flex-1i67uc8 r-gap-9aw3ui r-padding-tuq35u\">\u2026</div>\n  - attempting click action\n    - scrolling into view if needed\n    - done scrolling\n"
+    }
+  ],
+  "state": {
+    "created_id": "39aa5503-e9e7-475d-9f4d-50d0253585f4",
+    "patched_id": "39aa5503-e9e7-475d-9f4d-50d0253585f4"
+  }
+}
