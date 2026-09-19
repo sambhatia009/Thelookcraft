@@ -2,7 +2,9 @@ import os
 import io
 import re
 import json
+import time
 import uuid
+import asyncio
 import logging
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
@@ -385,16 +387,38 @@ def parse_json(raw: str) -> dict:
         return {}
 
 
+def downscale_for_vision(data: bytes, max_edge: int = 1024) -> bytes:
+    """Shrink large photos before base64-encoding them for the vision model (faster, cheaper)."""
+    try:
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(data))
+        if max(img.size) <= max_edge:
+            return data
+        img = img.convert("RGB")
+        img.thumbnail((max_edge, max_edge))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        return buf.getvalue()
+    except Exception as e:  # pragma: no cover
+        logger.warning(f"downscale failed: {e}")
+        return data
+
+
 @api_router.post("/items/upload")
 async def upload_item(authorization: Optional[str] = Header(None), file: UploadFile = File(...)):
     user = await get_current_user(authorization)
     raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty image")
+    t0 = time.monotonic()
 
-    tags = await tag_image(raw)
-    cutout = await run_in_threadpool(remove_background, raw)
+    small = await run_in_threadpool(downscale_for_vision, raw)
+    tags, cutout = await asyncio.gather(tag_image(small), run_in_threadpool(remove_background, raw))
     item_id = str(uuid.uuid4())
     path = f"{APP_NAME}/uploads/{user['user_id']}/{item_id}.png"
     await run_in_threadpool(put_object, path, cutout, "image/png")
+    logger.info(f"upload {len(raw)/1e6:.2f}MB processed in {time.monotonic() - t0:.1f}s")
 
     category = tags.get("category")
     if category not in CATEGORIES:

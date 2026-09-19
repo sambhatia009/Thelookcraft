@@ -50,3 +50,6 @@ Build "StyleVault", a mobile-first AI Personal Stylist & Virtual Wardrobe app. U
 
 ## Next Tasks
 - Validate Save To Photos, location auto-refresh and share sheet on a real device build (not testable in Expo Go web preview).
+
+## Bug fixes
+- **Camera add-item silent failure (iOS Expo Go):** add-item is a native modal so root toasts rendered beneath it; large camera photos (~10 MB) took ~50 s and timed out. Fixed: on-device compression (`src/compress-image.ts`, expo-image-manipulator, 1280px JPEG), inline error + Try Again / Choose Another inside the modal, backend downscale before Gemini + concurrent tagging/rembg (~6-10 s).

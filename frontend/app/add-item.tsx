@@ -9,6 +9,7 @@ import { Camera, Images, X } from "phosphor-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Item, uploadItemImage, api, imageUri } from "@/src/api";
+import { compressForUpload } from "@/src/compress-image";
 import { useToast } from "@/src/toast";
 import { fontSize, makeStyles, spacing, useTheme } from "@/src/theme";
 import { Button, Chip } from "@/src/ui";
@@ -29,46 +30,64 @@ export default function AddItem() {
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [item, setItem] = useState<Item | null>(null);
+  // Errors are shown inline: this screen is a native modal on iOS, so root-level toasts render beneath it.
+  const [error, setError] = useState<string | null>(null);
 
   const close = () => router.back();
 
+  const upload = async (uri: string) => {
+    setError(null);
+    setAnalyzing(true);
+    try {
+      const created = await uploadItemImage(uri);
+      setItem(created);
+      qc.invalidateQueries({ queryKey: ["items"] });
+    } catch (e: any) {
+      const msg = e?.message && e.message !== "Network request failed" ? e.message : "Upload failed — check your connection and try again";
+      setError(msg);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const reset = () => {
+    setLocalUri(null);
+    setItem(null);
+    setError(null);
+  };
+
   const pick = async (source: "camera" | "library") => {
     try {
+      setError(null);
       let perm;
       if (source === "camera") perm = await ImagePicker.requestCameraPermissionsAsync();
       else perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (!perm.granted) {
         if (!perm.canAskAgain) {
-          show("Permission denied. Enable it in Settings.", "error");
+          setError(`${source === "camera" ? "Camera" : "Photos"} access is off for StyleVault. Enable it in Settings.`);
           Linking.openSettings();
         } else {
-          show(`${source === "camera" ? "Camera" : "Photos"} permission needed`, "error");
+          setError(`${source === "camera" ? "Camera" : "Photos"} permission is needed to add this item.`);
         }
         return;
       }
 
       const result =
         source === "camera"
-          ? await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.8 })
-          : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.8 });
+          ? await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.8, exif: false })
+          : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.8, exif: false });
 
       if (result.canceled || !result.assets?.length) return;
-      const uri = result.assets[0].uri;
-      setLocalUri(uri);
+      const asset = result.assets[0];
+      setLocalUri(asset.uri);
       setAnalyzing(true);
-      try {
-        const created = await uploadItemImage(uri);
-        setItem(created);
-        qc.invalidateQueries({ queryKey: ["items"] });
-      } catch (e: any) {
-        show(e?.message || "Upload failed", "error");
-        setLocalUri(null);
-      } finally {
-        setAnalyzing(false);
-      }
+      const uri = Platform.OS === "web" ? asset.uri : await compressForUpload(asset.uri, asset.width, asset.height);
+      setLocalUri(uri);
+      await upload(uri);
     } catch {
-      show("Could not open camera/gallery", "error");
+      setAnalyzing(false);
+      setError("Could not open the camera or gallery. Please try again.");
     }
   };
 
@@ -89,7 +108,7 @@ export default function AddItem() {
       show("Item added to closet", "success");
       close();
     } catch {
-      show("Could not save item", "error");
+      setError("Could not save item. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -112,6 +131,12 @@ export default function AddItem() {
         bottomOffset={20}
         keyboardShouldPersistTaps="handled"
       >
+        {!!error && (
+          <View style={styles.errorBox} testID="add-item-error">
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
+
         {!localUri ? (
           <View style={styles.pickWrap}>
             <Pressable style={styles.pickBtn} onPress={() => pick("camera")} testID="take-photo-btn">
@@ -133,6 +158,13 @@ export default function AddItem() {
                 </View>
               )}
             </View>
+
+            {!item && !analyzing && (
+              <View style={styles.retryRow} testID="upload-retry-row">
+                <Button title="Try Again" onPress={() => upload(localUri)} testID="retry-upload-btn" style={{ flex: 1 }} />
+                <Button title="Choose Another" variant="outline" onPress={reset} testID="reset-photo-btn" style={{ flex: 1 }} />
+              </View>
+            )}
 
             {item && (
               <View style={{ gap: spacing.lg }} testID="tag-editor">
@@ -215,4 +247,7 @@ const useStyles = makeStyles((c) => ({
   label: { fontSize: fontSize.sm, letterSpacing: 2, color: c.muted, marginBottom: spacing.sm },
   input: { height: 50, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, color: c.onSurface, fontSize: fontSize.base, backgroundColor: c.surfaceTertiary },
   chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  errorBox: { borderWidth: 1, borderColor: c.error, padding: spacing.md, backgroundColor: c.surfaceTertiary },
+  errorText: { color: c.error, fontSize: fontSize.sm, fontWeight: "700", letterSpacing: 0.3, lineHeight: 19 },
+  retryRow: { flexDirection: "row", gap: spacing.sm },
 }));
