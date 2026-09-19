@@ -1,0 +1,199 @@
+{
+  "app_name": "StyleVault",
+  "personality": "5 Brutalist Mobile (customized for high-end luxury fashion)",
+  "personality_one_liner": "A stark, architectural canvas of pure black and white that elevates clothing photography to an editorial standard, inspired by SSENSE and Farfetch.",
+  "color": {
+    "light": {
+      "surface": "#ffffff",
+      "onSurface": "#000000",
+      "surfaceSecondary": "#ffffff",
+      "onSurfaceSecondary": "#000000",
+      "surfaceTertiary": "#f2f2f2",
+      "onSurfaceTertiary": "#000000",
+      "surfaceInverse": "#000000",
+      "onSurfaceInverse": "#ffffff",
+      "brand": "#000000",
+      "brandPrimary": "#000000",
+      "onBrandPrimary": "#ffffff",
+      "brandSecondary": "#333333",
+      "onBrandSecondary": "#ffffff",
+      "brandTertiary": "#e5e5e5",
+      "onBrandTertiary": "#000000",
+      "success": "#2e4a36",
+      "onSuccess": "#ffffff",
+      "warning": "#5c4d29",
+      "onWarning": "#ffffff",
+      "error": "#662424",
+      "onError": "#ffffff",
+      "info": "#000000",
+      "onInfo": "#ffffff",
+      "border": "#e5e5e5",
+      "borderStrong": "#000000",
+      "divider": "#e5e5e5",
+      "muted": "#737373",
+      "onBrand": "#ffffff"
+    },
+    "dark": {
+      "surface": "#000000",
+      "onSurface": "#ffffff",
+      "surfaceSecondary": "#000000",
+      "onSurfaceSecondary": "#ffffff",
+      "surfaceTertiary": "#1a1a1a",
+      "onSurfaceTertiary": "#ffffff",
+      "surfaceInverse": "#ffffff",
+      "onSurfaceInverse": "#000000",
+      "brand": "#ffffff",
+      "brandPrimary": "#ffffff",
+      "onBrandPrimary": "#000000",
+      "brandSecondary": "#cccccc",
+      "onBrandSecondary": "#000000",
+      "brandTertiary": "#333333",
+      "onBrandTertiary": "#ffffff",
+      "success": "#35523d",
+      "onSuccess": "#ffffff",
+      "warning": "#7a6637",
+      "onWarning": "#000000",
+      "error": "#8a3131",
+      "onError": "#ffffff",
+      "info": "#ffffff",
+      "onInfo": "#000000",
+      "border": "#2a2a2a",
+      "borderStrong": "#ffffff",
+      "divider": "#2a2a2a",
+      "muted": "#888888",
+      "onBrand": "#000000"
+    }
+  },
+  "typography": {
+    "displayFontFamily": "Clash Display",
+    "textFontFamily": "Satoshi",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Use rigid grids, edge-to-edge sections, and exposed structure. Strict flush alignments. Empty space is architectural, not accidental padding.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 0,
+    "md": 0,
+    "lg": 0,
+    "pill": 0
+  },
+  "shadow_tier": "0",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": false,
+    "do's": [],
+    "dont's": [
+      "No glassmorphism, blur, or translucency. Use solid colors and 1pt hairline borders to separate stacked elements.",
+      "No drop shadows."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-blur",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Closet",
+      "purpose": "A highly structured, grid-based digital wardrobe where users view and filter their uploaded clothing items.",
+      "states": {
+        "loading": "Centered minimalist spinner with 'SYNCING CLOSET...' in uppercase mono.",
+        "empty": "Stark empty view. Text: 'WARDROBE EMPTY'. Primary square button: 'UPLOAD ITEM'.",
+        "error": "Text: 'CONNECTION ERROR'. Square button: 'RETRY'."
+      },
+      "layout": "Sticky top bar with sharp rectangular filter chips (horizontal scroll). Below: flush 2-column or 3-column grid of items with 1pt hairline borders separating cells. Images use transparent backgrounds (auto-background removal). Square FAB (0px radius) in bottom right for adding items."
+    },
+    {
+      "name": "AI Stylist Chat",
+      "purpose": "Conversational interface for generating outfits and receiving styling advice.",
+      "states": {
+        "loading": "Stylist typing indicator (sharp blinking cursor).",
+        "empty": "List of sharp-edged quick prompt chips (e.g., 'Date night', 'Office casual').",
+        "error": "Text: 'STLYIST UNAVAILABLE'. Retry button."
+      },
+      "layout": "Messages are NOT rounded bubbles, but full-width sections or sharp-edged blocks. Outfit composite result cards display a collage of transparent clothing items, a 'Stylist Note' in Satoshi, and action buttons ('SAVE OUTFIT', 'TRY ANOTHER'). Bottom prompt bar is edge-to-edge with a 1pt top border, no radius. Allow item attachment into prompt context."
+    },
+    {
+      "name": "Saved Outfits",
+      "purpose": "An editorial lookbook of the user's favorite generated or curated outfits.",
+      "states": {
+        "loading": "Skeleton of large full-width image blocks.",
+        "empty": "Text: 'NO SAVED OUTFITS'. Button: 'OPEN STYLIST'.",
+        "error": "Text: 'COULD NOT LOAD LOOKBOOK'. Retry button."
+      },
+      "layout": "Vertical feed of full-width, edge-to-edge outfit composite cards. Each card acts like a fashion magazine page: large imagery, stark typography for the title, and a list of included items below. Heavy use of whitespace and hairline dividers between posts."
+    },
+    {
+      "name": "Profile",
+      "purpose": "User settings, style preferences, and wardrobe analytics.",
+      "states": {
+        "loading": "Skeleton view.",
+        "empty": "N/A",
+        "error": "Retry button."
+      },
+      "layout": "List of edge-to-edge rows with 1pt bottom borders. Sections for 'DRESS CODE DEFAULTS', 'WEATHER CONTEXT', 'COLOR PALETTE'. Avatar is a sharp square, not a circle. Minimalist typography for labels."
+    }
+  ],
+  "images": {
+    "t_shirt_transparent": {
+      "url": "https://images.unsplash.com/photo-1581655353564-df123a1eb820?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDN8MHwxfHNlYXJjaHwxfHxtaW5pbWFsaXN0JTIwd2hpdGUlMjB0LXNoaXJ0JTIwdHJhbnNwYXJlbnR8ZW58MHx8fHwxNzg5ODAxNDY4fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "white crew neck t-shirt"
+    },
+    "leather_jacket_transparent": {
+      "url": "https://images.unsplash.com/photo-1752761449517-8a6ac3459a08?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1NzZ8MHwxfHNlYXJjaHwxfHxibGFjayUyMGxlYXRoZXIlMjBqYWNrZXQlMjB0cmFuc3BhcmVudHxlbnwwfHx8fDE3ODk4MDE0Njh8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "black leather jacket"
+    },
+    "boots_transparent": {
+      "url": "https://images.pexels.com/photos/27174564/pexels-photo-27174564.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "High fashion black leather boots featuring chunky soles"
+    },
+    "outfit_composite_hero": {
+      "url": "https://images.unsplash.com/photo-1613915617430-8ab0fd7c6baf?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2Mzl8MHwxfHNlYXJjaHwxfHxzbWFydCUyMGNhc3VhbCUyMG9mZmljZSUyMGZhc2hpb24lMjBlZGl0b3JpYWx8ZW58MHx8fHwxNzg5ODAxNDY4fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "A person in a blazer and trousers with a hand in a pocket - smart casual outfit"
+    },
+    "profile_avatar": {
+      "url": "https://images.pexels.com/photos/31052395/pexels-photo-31052395.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "A focused portrait of a young man"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Adopt a rigid 0px border-radius across the entire application to mimic high-end fashion platforms like SSENSE and Farfetch.",
+    "Use 1pt hairline borders (using the 'border' token) extensively to separate UI elements, grid items, and rows, replacing traditional spacing and drop shadows.",
+    "The color palette must enforce strict monochrome (pure black and white) for all branding, navigation, and primary interactive elements.",
+    "Do NOT use glassmorphism, blurs, or rounded floating elements. Rely on solid color blocking and borders.",
+    "In the AI Stylist Chat, design outfit composite cards like editorial spreads rather than standard message bubbles. Feature transparent clothing PNGs grouped elegantly.",
+    "For Dark Mode, ensure elements remain stark. Surface is pure #000000, with 1pt borders in #2a2a2a, ensuring a complete inversion that maintains the high-contrast Brutalist aesthetic.",
+    "For the Closet Grid, remove padding between grid cells and use borders to define the grid, maximizing the canvas for the transparent clothing images."
+  ],
+  "haptics": {
+    "events": {
+      "upload_item": "medium",
+      "filter_chip_press": "light",
+      "send_prompt": "medium",
+      "save_outfit": "success",
+      "tab_change": "light"
+    }
+  }
+}
