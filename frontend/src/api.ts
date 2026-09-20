@@ -133,6 +133,9 @@ export const api = {
     req("/auth/register", { method: "POST", json: { name, email, password } }),
   login: (email: string, password: string) =>
     req("/auth/login", { method: "POST", json: { email, password } }),
+  forgotPassword: (email: string) => req("/auth/forgot-password", { method: "POST", json: { email } }),
+  resetPassword: (email: string, code: string, new_password: string) =>
+    req("/auth/reset-password", { method: "POST", json: { email, code, new_password } }),
   googleSession: (session_id: string) =>
     req("/auth/session", { method: "POST", json: { session_id } }),
   me: () => req("/auth/me"),

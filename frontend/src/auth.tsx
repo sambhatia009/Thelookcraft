@@ -14,6 +14,7 @@ type AuthState = {
   loading: boolean;
   signInEmail: (email: string, password: string) => Promise<void>;
   signUp: (name: string, email: string, password: string) => Promise<void>;
+  resetPassword: (email: string, code: string, newPassword: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -106,6 +107,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(data.user);
   }, []);
 
+  const resetPassword = useCallback(async (email: string, code: string, newPassword: string) => {
+    const data = await api.resetPassword(email, code, newPassword);
+    await saveToken(data.session_token);
+    setUser(data.user);
+  }, []);
+
   const signInWithGoogle = useCallback(async () => {
     if (Platform.OS === "web") {
       const redirectUrl = window.location.origin + "/";
@@ -130,7 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, signInEmail, signUp, signInWithGoogle, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signInEmail, signUp, resetPassword, signInWithGoogle, signOut }}>
       {children}
     </AuthContext.Provider>
   );

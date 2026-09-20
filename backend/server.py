@@ -4,6 +4,7 @@ import re
 import json
 import time
 import uuid
+import secrets
 import asyncio
 import logging
 from pathlib import Path
@@ -21,6 +22,7 @@ from starlette.concurrency import run_in_threadpool
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field
 from upload_jobs import UploadJobs, UploadJobResult, MAX_BYTES, cutout_enabled
+from emailer import send_password_reset_code
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -146,6 +148,16 @@ class LoginBody(BaseModel):
 
 class SessionBody(BaseModel):
     session_id: str
+
+
+class ForgotPasswordBody(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordBody(BaseModel):
+    email: EmailStr
+    code: str
+    new_password: str
 
 
 class ItemUpdate(BaseModel):
@@ -283,41 +295,6 @@ async def user_from_token(token: str):
     return user
 
 
-MOCK_ITEMS = [
-    {"name": "Navy Oxford Shirt", "category": "Tops", "subcategory": "Shirt", "color": "Navy",
-     "formality": "Smart Casual", "fabric": "Cotton", "season": "All Season",
-     "image_url": "https://images.unsplash.com/photo-1581655353564-df123a1eb820?crop=entropy&cs=srgb&fm=jpg&w=800&q=80"},
-    {"name": "Khaki Chinos", "category": "Bottoms", "subcategory": "Chinos", "color": "Khaki",
-     "formality": "Smart Casual", "fabric": "Cotton Twill", "season": "All Season",
-     "image_url": "https://images.pexels.com/photos/1082529/pexels-photo-1082529.jpeg?auto=compress&cs=tinysrgb&w=800"},
-    {"name": "White Leather Sneakers", "category": "Shoes", "subcategory": "Sneakers", "color": "White",
-     "formality": "Casual", "fabric": "Leather", "season": "Spring/Summer",
-     "image_url": "https://images.pexels.com/photos/2529148/pexels-photo-2529148.jpeg?auto=compress&cs=tinysrgb&w=800"},
-    {"name": "Charcoal Blazer", "category": "Outerwear", "subcategory": "Blazer", "color": "Charcoal",
-     "formality": "Formal", "fabric": "Wool Blend", "season": "Autumn/Winter",
-     "image_url": "https://images.pexels.com/photos/1300550/pexels-photo-1300550.jpeg?auto=compress&cs=tinysrgb&w=800"},
-    {"name": "Brown Leather Belt", "category": "Accessories", "subcategory": "Belt", "color": "Brown",
-     "formality": "Smart Casual", "fabric": "Leather", "season": "All Season",
-     "image_url": "https://images.pexels.com/photos/1240892/pexels-photo-1240892.jpeg?auto=compress&cs=tinysrgb&w=800"},
-]
-
-
-async def seed_wardrobe(user_id: str):
-    docs = []
-    for m in MOCK_ITEMS:
-        docs.append({
-            "id": str(uuid.uuid4()),
-            "user_id": user_id,
-            "storage_path": None,
-            "is_mock": True,
-            "deleted_at": None,
-            "created_at": now_utc(),
-            **m,
-        })
-    if docs:
-        await db.items.insert_many(docs)
-
-
 def clean_item(doc: dict) -> dict:
     doc.pop("_id", None)
     return doc
@@ -346,7 +323,6 @@ async def register(body: RegisterBody):
         "user_id": user_id, "dress_code": "Smart Casual", "body_fit": "Regular",
         "color_palette": ["Navy", "White", "Charcoal"], "weather": "Temperate",
     })
-    await seed_wardrobe(user_id)
     token = await create_session(user_id)
     return {"session_token": token, "user": {"user_id": user_id, "email": user["email"], "name": user["name"], "picture": None}}
 
@@ -358,6 +334,54 @@ async def login(body: LoginBody):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     token = await create_session(user["user_id"])
     return {"session_token": token, "user": {"user_id": user["user_id"], "email": user["email"], "name": user["name"], "picture": user.get("picture")}}
+
+
+RESET_CODE_MINUTES = 15
+
+
+@api_router.post("/auth/forgot-password")
+async def forgot_password(body: ForgotPasswordBody):
+    """Emails a one-time code. Always answers the same way so addresses can't be enumerated."""
+    email = body.email.lower()
+    generic = {"sent": True, "message": f"If an account exists for {email}, a reset code is on its way."}
+    user = await db.users.find_one({"email": email})
+    if not user or not user.get("password"):
+        return generic
+    window = now_utc() - timedelta(minutes=RESET_CODE_MINUTES)
+    recent = await db.password_resets.count_documents({"email": email, "created_at": {"$gte": window}})
+    if recent >= 3:
+        raise HTTPException(status_code=429, detail="Too many reset requests. Please wait a few minutes and try again.")
+    code = f"{secrets.randbelow(10 ** 6):06d}"
+    await db.password_resets.insert_one({
+        "email": email, "code_hash": hash_pw(code), "attempts": 0, "used": False,
+        "created_at": now_utc(), "expires_at": now_utc() + timedelta(minutes=RESET_CODE_MINUTES),
+    })
+    await send_password_reset_code(to=email, name=user.get("name"), code=code, minutes=RESET_CODE_MINUTES)
+    logger.info("password reset code sent user=%s", user["user_id"])
+    return generic
+
+
+@api_router.post("/auth/reset-password")
+async def reset_password(body: ResetPasswordBody):
+    email = body.email.lower()
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    reset = await db.password_resets.find_one(
+        {"email": email, "used": False, "expires_at": {"$gt": now_utc()}}, sort=[("created_at", -1)])
+    if not reset or reset.get("attempts", 0) >= 5:
+        raise HTTPException(status_code=400, detail="This code has expired. Request a new one.")
+    if not verify_pw(body.code.strip(), reset["code_hash"]):
+        await db.password_resets.update_one({"_id": reset["_id"]}, {"$inc": {"attempts": 1}})
+        raise HTTPException(status_code=400, detail="That code isn't right. Check the email and try again.")
+    user = await db.users.find_one({"email": email})
+    if not user:
+        raise HTTPException(status_code=400, detail="This code has expired. Request a new one.")
+    await db.password_resets.update_one({"_id": reset["_id"]}, {"$set": {"used": True}})
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"password": hash_pw(body.new_password)}})
+    await db.user_sessions.delete_many({"user_id": user["user_id"]})  # sign out everywhere else
+    token = await create_session(user["user_id"])
+    logger.info("password reset completed user=%s", user["user_id"])
+    return {"session_token": token, "user": {"user_id": user["user_id"], "email": user["email"], "name": user.get("name"), "picture": user.get("picture")}}
 
 
 @api_router.post("/auth/session")
@@ -384,7 +408,6 @@ async def google_session(body: SessionBody):
             "user_id": user_id, "dress_code": "Smart Casual", "body_fit": "Regular",
             "color_palette": ["Navy", "White", "Charcoal"], "weather": "Temperate",
         })
-        await seed_wardrobe(user_id)
     token = await create_session(user_id)
     user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password": 0})
     return {"session_token": token, "user": user}

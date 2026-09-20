@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/auth";
 import { ApiError } from "@/src/api";
+import { ForgotPassword } from "@/src/components/forgot-password";
 import { useToast } from "@/src/toast";
 import { Button } from "@/src/ui";
 import { fontSize, makeStyles, spacing, useTheme } from "@/src/theme";
@@ -16,7 +17,7 @@ export default function Login() {
   const { signInEmail, signUp, signInWithGoogle } = useAuth();
   const { show } = useToast();
 
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -61,6 +62,9 @@ export default function Login() {
         <Text style={styles.tagline}>YOUR AI WARDROBE & PERSONAL STYLIST</Text>
       </View>
 
+      {mode === "forgot" ? (
+        <ForgotPassword initialEmail={email} inputStyle={styles.input} onBack={() => setMode("login")} />
+      ) : (
       <View style={styles.form}>
         {mode === "signup" && (
           <TextInput
@@ -92,6 +96,11 @@ export default function Login() {
           onChangeText={setPassword}
           secureTextEntry
         />
+        {mode === "login" && (
+          <Pressable testID="forgot-password-link" onPress={() => setMode("forgot")} style={styles.forgot}>
+            <Text style={styles.toggleText}>FORGOT PASSWORD?</Text>
+          </Pressable>
+        )}
 
         <Button
           testID="submit-button"
@@ -115,6 +124,7 @@ export default function Login() {
           </Text>
         </Pressable>
       </View>
+      )}
     </KeyboardAwareScrollView>
   );
 }
@@ -139,5 +149,6 @@ const useStyles = makeStyles((c) => ({
   line: { flex: 1, height: 1, backgroundColor: c.border },
   orText: { color: c.muted, fontSize: fontSize.sm, letterSpacing: 2 },
   toggle: { alignItems: "center", paddingVertical: spacing.lg },
+  forgot: { alignSelf: "flex-end", paddingVertical: spacing.sm, minHeight: 44, justifyContent: "center" },
   toggleText: { color: c.onSurface, fontSize: fontSize.sm, letterSpacing: 1, fontWeight: "600" },
 }));
