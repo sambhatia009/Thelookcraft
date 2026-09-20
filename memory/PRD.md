@@ -102,6 +102,9 @@ Build "StyleVault", a mobile-first AI Personal Stylist & Virtual Wardrobe app. U
 - Implemented `cutout_enabled()` in `upload_jobs.py`: `CUTOUT_MODE=on|off|auto` (default auto → disabled when cgroup memory < 3 GB or CPU < 1.5 cores or < 2 cpus). When disabled: no model warm-up, no cutout, item keeps `-original.jpg`, `background_removed=false`, no warning text. Legacy `/api/items/upload` `remove_background` honours the same switch. Verified with CUTOUT_MODE=off: complete in 5.3 s, original kept, no warning. Preview stays cutout-enabled (log line "upload worker started cutout_enabled=…").
 - User must Publish → Deploy again for the published app to pick up the new upload flow.
 
+### Profile photo upload: "Cannot read property 'default' of undefined"
+- Cause: `uploadProfilePhoto` used runtime `await import("react-native")` / `await import("expo-file-system")`; the async chunk resolution failed on device (published/exported bundles don't serve lazy chunks). Fixed by removing every dynamic `import()` from app code: static imports in `src/api.ts`, `src/item-upload.ts`; `uploadItemImage` moved into `item-upload.ts`. Native profile upload now uses expo-file-system `File.upload` (MULTIPART, field `file`); web uses FormData. Compression failure falls back to the original. Web verified: profile photo + add-item both work.
+
 ### Readiness health-check investigation
 - User asked to run health check, then fix its reported blocker. Two checks returned FAIL solely for missing `--tunnel`; all other reported configuration/compilation checks passed. First run also warned about local rembg resource usage (unchanged).
 - Independently verified public preview HTTP 200, `/api/` HTTP 200 with StyleVault response, Expo/backend RUNNING, public iOS Expo manifest runtime `exposdk:57.0.0`, and launch bundle URL using the configured public proxy hostname.

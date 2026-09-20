@@ -1,3 +1,6 @@
+import { File, UploadType } from "expo-file-system";
+import { Platform } from "react-native";
+
 import { storage } from "@/src/utils/storage";
 
 export const BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL as string;
@@ -180,38 +183,31 @@ export const api = {
     req("/stylist/visualize", { method: "POST", json: { item_ids, outfit_name } }),
 };
 
-export async function uploadItemImage(uri: string, options?: import("@/src/item-upload").UploadOptions): Promise<Item> {
-  const { uploadWithProgress, newUploadId } = await import("@/src/item-upload");
-  return uploadWithProgress(uri, options || { uploadId: newUploadId() });
-}
-
-export async function uploadProfilePhoto(uri: string) {
-  return uploadImage("/api/profile/photo", uri) as Promise<{ photo_path: string }>;
-}
-
-async function uploadImage(endpoint: string, uri: string) {
-  const form = new FormData();
-  const name = `photo_${Date.now()}.jpg`;
-  const { Platform } = await import("react-native");
-  if (Platform.OS === "web") {
-    const blob = await (await fetch(uri)).blob();
-    form.append("file", blob, name);
-  } else {
-    // Expo's fetch rejects React Native's legacy `{ uri, name, type }` parts
-    // ("Unsupported FormDataPart implementation"); a Blob-compatible File works.
-    // Its filename/mime come from the file URI (.jpg → image/jpeg), which FastAPI needs for UploadFile.
-    const { File } = await import("expo-file-system");
-    form.append("file", new File(uri) as unknown as Blob);
-  }
-  const headers: Record<string, string> = {};
-  if (inMemoryToken) headers["Authorization"] = `Bearer ${inMemoryToken}`;
-  const res = await fetch(`${BACKEND}${endpoint}`, { method: "POST", headers, body: form });
-  if (!res.ok) {
+export async function uploadProfilePhoto(uri: string): Promise<{ photo_path: string }> {
+  const url = `${BACKEND}/api/profile/photo`;
+  const auth: Record<string, string> = inMemoryToken ? { Authorization: `Bearer ${inMemoryToken}` } : {};
+  const fail = async (status: number, text: string) => {
     let detail = "Upload failed";
-    try {
-      detail = (await res.json()).detail || detail;
-    } catch {}
-    throw new ApiError(res.status, detail);
+    try { detail = JSON.parse(text).detail || detail; } catch {}
+    throw new ApiError(status, detail);
+  };
+  if (Platform.OS === "web") {
+    const form = new FormData();
+    form.append("file", await (await fetch(uri)).blob(), `photo_${Date.now()}.jpg`);
+    const res = await fetch(url, { method: "POST", headers: auth, body: form });
+    if (!res.ok) await fail(res.status, await res.text());
+    return res.json();
   }
-  return res.json();
+  // Native: let the OS upload the file itself (multipart, field "file") — no JS buffering.
+  const file = new File(uri);
+  if (!file.exists) throw new Error("The photo is no longer on this device. Please choose it again.");
+  const result = await file.upload(url, {
+    httpMethod: "POST",
+    uploadType: UploadType.MULTIPART,
+    fieldName: "file",
+    mimeType: "image/jpeg",
+    headers: auth,
+  });
+  if (result.status < 200 || result.status >= 300) await fail(result.status, result.body);
+  return JSON.parse(result.body);
 }

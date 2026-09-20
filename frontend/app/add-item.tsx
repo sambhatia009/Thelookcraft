@@ -8,12 +8,12 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { Camera, Images, X } from "phosphor-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Item, uploadItemImage, api, imageUri } from "@/src/api";
+import { Item, api, imageUri } from "@/src/api";
 import { describeError, reportClientEvent } from "@/src/client-log";
 import { BatchEntry, BulkReview } from "@/src/components/bulk-review";
 import { ItemEditor } from "@/src/components/item-editor";
 import { compressForUpload } from "@/src/compress-image";
-import { newUploadId } from "@/src/item-upload";
+import { newUploadId, uploadItemImage } from "@/src/item-upload";
 import { useToast } from "@/src/toast";
 import { fontSize, makeStyles, spacing, useTheme } from "@/src/theme";
 import { Button } from "@/src/ui";

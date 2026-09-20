@@ -1,3 +1,4 @@
+import { File, UploadType } from "expo-file-system";
 import { fetch as expoFetch } from "expo/fetch";
 import { Platform } from "react-native";
 
@@ -54,7 +55,6 @@ async function fetchJob(path: string, body: Blob | Uint8Array | undefined, optio
 
 /** Native transport: the OS uploads the file itself (URLSession/OkHttp) — nothing is buffered through JS. */
 async function nativeUpload(uri: string, options: UploadOptions, timeout: number): Promise<Job> {
-  const { File, UploadType } = await import("expo-file-system");
   const file = new File(uri);
   if (!file.exists) throw new Error("The photo is no longer on this device. Please choose it again.");
   if ((file.size ?? 0) > 16 * 1024 * 1024) throw new Error("Photo is too large. Please choose a smaller image.");
@@ -85,6 +85,10 @@ async function sendPhoto(uri: string, options: UploadOptions, timeout: number): 
 }
 
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+export function uploadItemImage(uri: string, options?: UploadOptions): Promise<Item> {
+  return uploadWithProgress(uri, options || { uploadId: newUploadId() });
+}
 
 export async function uploadWithProgress(uri: string, options: UploadOptions): Promise<Item> {
   const started = Date.now();

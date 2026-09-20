@@ -62,7 +62,7 @@ export function AboutYou({ profile, onUpdate }: { profile?: Profile; onUpdate: (
       if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];
       setUploading(true);
-      const uri = Platform.OS === "web" ? asset.uri : await compressForUpload(asset.uri, asset.width, asset.height);
+      const uri = Platform.OS === "web" ? asset.uri : await compressForUpload(asset.uri, asset.width, asset.height).catch(() => asset.uri);
       setPreview(uri);
       await uploadProfilePhoto(uri);
       qc.invalidateQueries({ queryKey: ["profile"] });
