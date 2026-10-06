@@ -48,7 +48,7 @@ export function AboutYou({ profile, onUpdate }: { profile?: Profile; onUpdate: (
       const perm = source === "camera" ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
         if (!perm.canAskAgain) {
-          setError(`${source === "camera" ? "Camera" : "Photos"} access is off for StyleVault. Enable it in Settings.`);
+          setError(`${source === "camera" ? "Camera" : "Photos"} access is off for TheLookCraft. Enable it in Settings.`);
           if (Platform.OS !== "web") Linking.openSettings();
         } else {
           setError(`${source === "camera" ? "Camera" : "Photos"} permission is needed to add your photo.`);

@@ -1,4 +1,4 @@
-// Design tokens for StyleVault — Brutalist / editorial fashion (SSENSE / Farfetch).
+// Design tokens for TheLookCraft — Brutalist / editorial fashion (SSENSE / Farfetch).
 // Strict monochrome, 0px radius, 1pt hairline borders, no shadows.
 // Light + Dark both shipped; device setting decides.
 

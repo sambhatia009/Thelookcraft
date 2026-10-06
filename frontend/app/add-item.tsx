@@ -121,7 +121,7 @@ export default function AddItem() {
 
       if (!perm.granted) {
         if (!perm.canAskAgain) {
-          setError(`${source === "camera" ? "Camera" : "Photos"} access is off for StyleVault. Enable it in Settings.`);
+          setError(`${source === "camera" ? "Camera" : "Photos"} access is off for TheLookCraft. Enable it in Settings.`);
           Linking.openSettings();
         } else {
           setError(`${source === "camera" ? "Camera" : "Photos"} permission is needed to add this item.`);

@@ -156,7 +156,7 @@ export default function Lookbook() {
       const uri = await capture(item);
       const result = await saveToPhotos(uri, `${item.title.replace(/\s+/g, "_")}.png`);
       if (result === "saved") show(Platform.OS === "web" ? "Image downloaded" : "Saved to Photos", "success");
-      else if (result === "blocked") show("Photos access is off for StyleVault", "error", { label: "Open Settings", onPress: openPhotoSettings });
+      else if (result === "blocked") show("Photos access is off for TheLookCraft", "error", { label: "Open Settings", onPress: openPhotoSettings });
       else if (result === "denied") show("Allow Photos access to save your look", "error");
       else show("Could not save image", "error");
     } catch {
@@ -208,7 +208,7 @@ export default function Lookbook() {
             </Text>
           ))}
         </View>
-        <Text style={styles.watermark} testID={`outfit-watermark-${item.id}`}>STYLEVAULT</Text>
+        <Text style={styles.watermark} testID={`outfit-watermark-${item.id}`}>THELOOKCRAFT</Text>
       </View>
 
       {!item.visualization_path ? (

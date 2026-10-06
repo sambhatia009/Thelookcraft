@@ -7,7 +7,7 @@ export default function Index() {
   const { colors } = useTheme();
   return (
     <View style={styles.container} testID="splash-screen">
-      <Text style={styles.logo}>STYLEVAULT</Text>
+      <Text style={styles.logo}>THELOOKCRAFT</Text>
       <ActivityIndicator color={colors.onSurface} style={{ marginTop: spacing.xl }} />
     </View>
   );

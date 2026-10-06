@@ -718,7 +718,7 @@ async def stylist_generate(body: StylistBody, authorization: Optional[str] = Hea
     taste = await taste_summary(user["user_id"], {it["id"]: it["name"] for it in all_items})
 
     system = (
-        "You are StyleVault, an elite personal fashion stylist. You build outfits ONLY from the user's "
+        "You are TheLookCraft, an elite personal fashion stylist. You build outfits ONLY from the user's "
         "wardrobe provided as JSON. Consider color harmony, texture, formality and season. "
         f"User preferences: dress code {profile.get('dress_code')}, weather {profile.get('weather')}. "
         "Pieces flagged never_worn are ones the user has not reached for yet: when they suit the request, prefer them "
@@ -1115,7 +1115,7 @@ async def generate_visualization(body: VisualizeBody, user: dict):
 
 @api_router.get("/")
 async def root():
-    return {"message": "StyleVault API"}
+    return {"message": "TheLookCraft API"}
 
 
 upload_jobs = UploadJobs(db, tag_image, put_object, get_object, APP_NAME)

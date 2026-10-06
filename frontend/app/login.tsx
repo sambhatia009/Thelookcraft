@@ -58,7 +58,7 @@ export default function Login() {
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.brandBlock}>
-        <Text style={styles.logo}>STYLEVAULT</Text>
+        <Text style={styles.logo}>THELOOKCRAFT</Text>
         <Text style={styles.tagline}>YOUR AI WARDROBE & PERSONAL STYLIST</Text>
       </View>
 
@@ -132,7 +132,7 @@ export default function Login() {
 const useStyles = makeStyles((c) => ({
   container: { flexGrow: 1, paddingHorizontal: spacing.lg, justifyContent: "center" },
   brandBlock: { marginBottom: spacing["3xl"] },
-  logo: { fontSize: 40, fontWeight: "900", letterSpacing: 2, color: c.onSurface },
+  logo: { fontSize: 34, fontWeight: "900", letterSpacing: 2, color: c.onSurface },
   tagline: { fontSize: fontSize.sm, color: c.muted, letterSpacing: 2, marginTop: spacing.sm },
   form: { gap: spacing.md },
   input: {
