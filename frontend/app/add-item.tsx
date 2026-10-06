@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, Text, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -45,6 +45,7 @@ export default function AddItem() {
   const styles = useStyles();
   const { colors } = useTheme();
   const router = useRouter();
+  const { source } = useLocalSearchParams<{ source?: string }>();
   const qc = useQueryClient();
   const { show } = useToast();
 
@@ -70,6 +71,15 @@ export default function AddItem() {
     mounted.current = true;
     return () => { mounted.current = false; controller.current?.abort(); };
   }, []);
+
+  // Opened from the welcome card: jump straight into the chosen picker.
+  const autoPicked = useRef(false);
+  useEffect(() => {
+    if (autoPicked.current || (source !== "camera" && source !== "library")) return;
+    autoPicked.current = true;
+    pick(source);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source]);
 
   const close = () => router.back();
 

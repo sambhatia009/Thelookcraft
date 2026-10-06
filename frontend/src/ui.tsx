@@ -25,6 +25,7 @@ export function Button({
   disabled,
   testID,
   style,
+  icon,
 }: {
   title: string;
   onPress: () => void;
@@ -33,6 +34,7 @@ export function Button({
   disabled?: boolean;
   testID?: string;
   style?: ViewStyle;
+  icon?: React.ReactNode;
 }) {
   const styles = useStyles();
   const { colors } = useTheme();
@@ -58,7 +60,10 @@ export function Button({
       {loading ? (
         <ActivityIndicator color={fg} />
       ) : (
-        <Text style={[styles.btnText, { color: fg }]}>{title}</Text>
+        <>
+          {icon}
+          <Text style={[styles.btnText, { color: fg }]}>{title}</Text>
+        </>
       )}
     </Pressable>
   );
@@ -164,6 +169,8 @@ export function Divider() {
 const useStyles = makeStyles((c) => ({
   btn: {
     height: 52,
+    flexDirection: "row",
+    gap: spacing.sm,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: spacing.xl,

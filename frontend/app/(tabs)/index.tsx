@@ -10,6 +10,7 @@ import { api, imageUri, Item } from "@/src/api";
 import { ItemThumb } from "@/src/components/item-thumb";
 import { usesNativeTabs } from "@/src/navigation";
 import { fontSize, makeStyles, spacing, useTheme } from "@/src/theme";
+import { ClosetWelcome, STARTER_GOAL, StarterProgress } from "@/src/components/closet-welcome";
 import { Chip, ChipRow, EmptyState } from "@/src/ui";
 
 const CATEGORIES = ["All", "Tops", "Bottoms", "Outerwear", "Shoes", "Accessories"];
@@ -71,13 +72,18 @@ export default function Closet() {
       ) : isError ? (
         <EmptyState title="CONNECTION ERROR" actionLabel="Retry" onAction={() => refetch()} testID="closet-error" />
       ) : data && data.length === 0 ? (
-        <EmptyState title="WARDROBE EMPTY" actionLabel="Upload Item" onAction={() => router.push("/add-item")} testID="closet-empty" />
+        category === "All" ? (
+          <ClosetWelcome />
+        ) : (
+          <EmptyState title="NOTHING HERE YET" actionLabel="Upload Item" onAction={() => router.push("/add-item")} testID="closet-empty" />
+        )
       ) : (
         <FlatList
           data={data}
           keyExtractor={(i) => i.id}
           numColumns={2}
           renderItem={renderItem}
+          ListHeaderComponent={category === "All" && data && data.length < STARTER_GOAL ? <StarterProgress items={data} /> : null}
           onRefresh={refetch}
           refreshing={isRefetching}
           contentContainerStyle={{ paddingBottom: bottomChrome + 120 }}
