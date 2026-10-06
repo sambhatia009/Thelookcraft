@@ -15,5 +15,5 @@ export default function Index() {
 
 const useStyles = makeStyles((c) => ({
   container: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: c.surface },
-  logo: { fontSize: fontSize["2xl"], fontWeight: "900", letterSpacing: 4, color: c.onSurface },
+  logo: { fontSize: fontSize.xl, fontWeight: "900", letterSpacing: 4, color: c.onSurface, textAlign: "center" },
 }));

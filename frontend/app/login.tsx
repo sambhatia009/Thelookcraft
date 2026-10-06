@@ -131,9 +131,9 @@ export default function Login() {
 
 const useStyles = makeStyles((c) => ({
   container: { flexGrow: 1, paddingHorizontal: spacing.lg, justifyContent: "center" },
-  brandBlock: { marginBottom: spacing["3xl"] },
-  logo: { fontSize: 34, fontWeight: "900", letterSpacing: 2, color: c.onSurface },
-  tagline: { fontSize: fontSize.sm, color: c.muted, letterSpacing: 2, marginTop: spacing.sm },
+  brandBlock: { marginBottom: spacing["3xl"], alignItems: "center" },
+  logo: { fontSize: 26, fontWeight: "900", letterSpacing: 4, color: c.onSurface, textAlign: "center" },
+  tagline: { fontSize: fontSize.sm, color: c.muted, letterSpacing: 2, marginTop: spacing.sm, textAlign: "center" },
   form: { gap: spacing.md },
   input: {
     height: 54,
