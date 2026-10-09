@@ -45,7 +45,10 @@ export function AboutYou({ profile, onUpdate }: { profile?: Profile; onUpdate: (
   const pick = async (source: "camera" | "library") => {
     setError(null);
     try {
-      const perm = source === "camera" ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      // Android uses the system Photo Picker (PickVisualMedia): no storage permission is needed or declared.
+      const perm = source === "camera" ? await ImagePicker.requestCameraPermissionsAsync()
+        : Platform.OS === "android" ? { granted: true, canAskAgain: true }
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
         if (!perm.canAskAgain) {
           setError(`${source === "camera" ? "Camera" : "Photos"} access is off for TheLookCraft. Enable it in Settings.`);

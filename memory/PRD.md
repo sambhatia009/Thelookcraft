@@ -121,6 +121,9 @@ Build "StyleVault", a mobile-first AI Personal Stylist & Virtual Wardrobe app. U
 - Frontend: Profile → "PRIVACY & DATA" (`src/components/privacy-data.tsx`): Privacy Policy (in-app browser), Disable account, Delete account & data (bottom-sheet confirm) → signs out; `useAuth().closeAccount`. Play Console URLs: privacy `…/api/account/privacy`, deletion `…/api/account/delete-request` (use the DEPLOYED backend domain).
 - Verified via curl + web: disable → login reactivates → in-app delete wipes 2 photos + all records → token 401, login 401.
 
+### Play policy: Android Photo Picker instead of READ_MEDIA_* (Play Console flag)
+- `app.json`: removed `READ_MEDIA_IMAGES` from android.permissions; added `android.blockedPermissions` for READ_MEDIA_IMAGES/VIDEO/AUDIO, READ_MEDIA_VISUAL_USER_SELECTED, ACCESS_MEDIA_LOCATION, READ/WRITE_EXTERNAL_STORAGE (strips library-declared ones via tools:node=remove); expo-media-library plugin `granularPermissions: []`. expo-image-picker already uses `PickVisualMedia` on Android; add-item + about-you skip `requestMediaLibraryPermissionsAsync` on Android. Saving share cards uses write-only MediaStore (no read permission). Verified with `expo config --type prebuild`. Requires a new Android build.
+
 ### Store identifiers
 - Android `package` and iOS `bundleIdentifier` set to `com.thelookcraft.app` (reverse of thelookcraft.com) for Play Console / App Store Connect. Scheme and storage prefixes unchanged.
 

@@ -3,7 +3,7 @@ import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Linking, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Platform, Pressable, Text, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { Camera, Images, X } from "phosphor-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -127,6 +127,8 @@ export default function AddItem() {
       setError(null);
       let perm;
       if (source === "camera") perm = await ImagePicker.requestCameraPermissionsAsync();
+      // Android uses the system Photo Picker (PickVisualMedia): no storage permission is needed or declared.
+      else if (Platform.OS === "android") perm = { granted: true, canAskAgain: true };
       else perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (!perm.granted) {
