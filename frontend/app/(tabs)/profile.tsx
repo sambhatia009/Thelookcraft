@@ -8,6 +8,7 @@ import { api, Profile as ProfileType } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { AboutYou } from "@/src/components/about-you";
 import { InsightsPanel } from "@/src/components/insights";
+import { PrivacyAndData } from "@/src/components/privacy-data";
 import { usesNativeTabs } from "@/src/navigation";
 import { useToast } from "@/src/toast";
 import { fontSize, makeStyles, spacing, useTheme } from "@/src/theme";
@@ -106,6 +107,10 @@ export default function Profile() {
               <Chip key={p} label={p} active={(profile?.color_palette || []).includes(p)} onPress={() => togglePalette(p)} testID={`palette-${p}`} />
             ))}
           </View>
+        </Section>
+
+        <Section title="PRIVACY & DATA">
+          <PrivacyAndData />
         </Section>
 
         <View style={{ padding: spacing.lg }}>

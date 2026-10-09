@@ -23,6 +23,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field
 from upload_jobs import UploadJobs, UploadJobResult, MAX_BYTES, cutout_enabled
 from emailer import send_password_reset_code
+from account import build_router as build_account_router
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -290,7 +291,7 @@ async def user_from_token(token: str):
     if exp < now_utc():
         raise HTTPException(status_code=401, detail="Session expired")
     user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0, "password": 0})
-    if not user:
+    if not user or user.get("disabled_at"):
         raise HTTPException(status_code=401, detail="User not found")
     return user
 
@@ -327,13 +328,24 @@ async def register(body: RegisterBody):
     return {"session_token": token, "user": {"user_id": user_id, "email": user["email"], "name": user["name"], "picture": None}}
 
 
+async def reactivate_if_disabled(user: dict) -> bool:
+    """A disabled account comes back the moment its owner signs in again."""
+    if not user.get("disabled_at"):
+        return False
+    await db.users.update_one({"user_id": user["user_id"]}, {"$unset": {"disabled_at": ""}})
+    logger.info("account reactivated user=%s", user["user_id"])
+    return True
+
+
 @api_router.post("/auth/login")
 async def login(body: LoginBody):
     user = await db.users.find_one({"email": body.email.lower()})
     if not user or not user.get("password") or not verify_pw(body.password, user["password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    reactivated = await reactivate_if_disabled(user)
     token = await create_session(user["user_id"])
-    return {"session_token": token, "user": {"user_id": user["user_id"], "email": user["email"], "name": user["name"], "picture": user.get("picture")}}
+    return {"session_token": token, "reactivated": reactivated,
+            "user": {"user_id": user["user_id"], "email": user["email"], "name": user["name"], "picture": user.get("picture")}}
 
 
 RESET_CODE_MINUTES = 15
@@ -377,7 +389,7 @@ async def reset_password(body: ResetPasswordBody):
     if not user:
         raise HTTPException(status_code=400, detail="This code has expired. Request a new one.")
     await db.password_resets.update_one({"_id": reset["_id"]}, {"$set": {"used": True}})
-    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"password": hash_pw(body.new_password)}})
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"password": hash_pw(body.new_password)}, "$unset": {"disabled_at": ""}})
     await db.user_sessions.delete_many({"user_id": user["user_id"]})  # sign out everywhere else
     token = await create_session(user["user_id"])
     logger.info("password reset completed user=%s", user["user_id"])
@@ -408,9 +420,10 @@ async def google_session(body: SessionBody):
             "user_id": user_id, "dress_code": "Smart Casual", "body_fit": "Regular",
             "color_palette": ["Navy", "White", "Charcoal"], "weather": "Temperate",
         })
+    reactivated = await reactivate_if_disabled(existing) if existing else False
     token = await create_session(user_id)
     user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password": 0})
-    return {"session_token": token, "user": user}
+    return {"session_token": token, "reactivated": reactivated, "user": user}
 
 
 @api_router.get("/auth/me")
@@ -1119,6 +1132,8 @@ async def root():
 
 
 upload_jobs = UploadJobs(db, tag_image, put_object, get_object, APP_NAME)
+account_router, _ = build_account_router(db, now_utc, hash_pw, verify_pw, get_current_user, put_object)
+api_router.include_router(account_router)
 app.include_router(api_router)
 
 app.add_middleware(

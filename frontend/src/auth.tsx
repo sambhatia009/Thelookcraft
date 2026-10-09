@@ -12,9 +12,10 @@ type User = { user_id: string; email: string; name?: string; picture?: string | 
 type AuthState = {
   user: User | null;
   loading: boolean;
-  signInEmail: (email: string, password: string) => Promise<void>;
+  signInEmail: (email: string, password: string) => Promise<{ reactivated?: boolean }>;
   signUp: (name: string, email: string, password: string) => Promise<void>;
   resetPassword: (email: string, code: string, newPassword: string) => Promise<void>;
+  closeAccount: (mode: "disable" | "delete") => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -99,6 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const data = await api.login(email, password);
     await saveToken(data.session_token);
     setUser(data.user);
+    return { reactivated: !!data.reactivated };
   }, []);
 
   const signUp = useCallback(async (name: string, email: string, password: string) => {
@@ -128,6 +130,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (sid) await exchangeSessionId(sid);
   }, [exchangeSessionId]);
 
+  const closeAccount = useCallback(async (mode: "disable" | "delete") => {
+    await api.closeAccount(mode);
+    await clearToken();
+    setUser(null);
+  }, []);
+
   const signOut = useCallback(async () => {
     try {
       await api.logout();
@@ -137,7 +145,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, signInEmail, signUp, resetPassword, signInWithGoogle, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signInEmail, signUp, resetPassword, closeAccount, signInWithGoogle, signOut }}>
       {children}
     </AuthContext.Provider>
   );

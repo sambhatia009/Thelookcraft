@@ -140,6 +140,7 @@ export const api = {
     req("/auth/session", { method: "POST", json: { session_id } }),
   me: () => req("/auth/me"),
   logout: () => req("/auth/logout", { method: "POST" }),
+  closeAccount: (mode: "disable" | "delete") => req("/account/close", { method: "POST", json: { mode } }),
 
   items: (category?: string): Promise<Item[]> =>
     req(`/items${category && category !== "All" ? `?category=${encodeURIComponent(category)}` : ""}`),

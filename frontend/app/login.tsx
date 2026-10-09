@@ -30,8 +30,10 @@ export default function Login() {
     }
     setBusy(true);
     try {
-      if (mode === "login") await signInEmail(email.trim(), password);
-      else await signUp(name.trim(), email.trim(), password);
+      if (mode === "login") {
+        const { reactivated } = await signInEmail(email.trim(), password);
+        if (reactivated) show("Welcome back — your account has been reactivated", "success");
+      } else await signUp(name.trim(), email.trim(), password);
     } catch (e) {
       show(e instanceof ApiError ? e.message : "Authentication failed", "error");
     } finally {
