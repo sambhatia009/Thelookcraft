@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.stylevaultapp.maauzy",
+      "bundleIdentifier": "com.thelookcraft.app",
       "infoPlist": {
         "NSCameraUsageDescription": "Take photos of your clothes to add them",
         "NSPhotoLibraryUsageDescription": "Add clothing photos from your gallery",
@@ -22,7 +22,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
       },
-      "package": "com.emergent.stylevaultapp.maauzy",
+      "package": "com.thelookcraft.app",
       "permissions": [
         "CAMERA",
         "READ_MEDIA_IMAGES",
