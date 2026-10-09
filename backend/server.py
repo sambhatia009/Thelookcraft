@@ -23,7 +23,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field
 from upload_jobs import UploadJobs, UploadJobResult, MAX_BYTES, cutout_enabled
 from emailer import send_password_reset_code
-from account import build_router as build_account_router
+from account import DELETE_REQUEST_FORM, build_router as build_account_router
+from website import build_router as build_site_router
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -1134,6 +1135,7 @@ async def root():
 upload_jobs = UploadJobs(db, tag_image, put_object, get_object, APP_NAME)
 account_router, _ = build_account_router(db, now_utc, hash_pw, verify_pw, get_current_user, put_object)
 api_router.include_router(account_router)
+api_router.include_router(build_site_router(DELETE_REQUEST_FORM))
 app.include_router(api_router)
 
 app.add_middleware(

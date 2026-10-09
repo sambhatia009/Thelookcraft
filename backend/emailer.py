@@ -112,6 +112,8 @@ async def send_email(*, to: str, subject: str, html: str) -> str | None:
         return resp.json().get("id")
     except httpx.HTTPStatusError as e:
         logger.error("email send failed status=%s body=%s", e.response.status_code, e.response.text[:300])
+        if e.response.status_code == 422:
+            raise HTTPException(status_code=400, detail="That email address can't receive mail. Check it and try again.")
         raise HTTPException(status_code=502, detail="Could not send the email right now. Please try again.")
     except Exception as e:
         logger.error("email send error type=%s", type(e).__name__)

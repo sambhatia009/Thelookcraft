@@ -8,8 +8,8 @@ import { useToast } from "@/src/toast";
 import { fontSize, makeStyles, spacing } from "@/src/theme";
 import { Button } from "@/src/ui";
 
-export const PRIVACY_URL = `${BACKEND}/api/account/privacy`;
-export const DELETE_REQUEST_URL = `${BACKEND}/api/account/delete-request`;
+export const PRIVACY_URL = `${BACKEND}/api/site/privacy`;
+export const DELETE_REQUEST_URL = `${BACKEND}/api/site/delete-account`;
 
 type Mode = "disable" | "delete";
 
