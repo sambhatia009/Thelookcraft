@@ -359,8 +359,11 @@ async def forgot_password(body: ForgotPasswordBody):
     email = body.email.lower()
     generic = {"sent": True, "message": f"If an account exists for {email}, a reset code is on its way."}
     user = await db.users.find_one({"email": email})
-    if not user or not user.get("password"):
+    if not user:
         return generic
+    if not user.get("password"):
+        # Google-only account: there is no password to reset, and silently sending nothing would strand the user.
+        raise HTTPException(status_code=400, detail="This account signs in with Google — tap \"Continue with Google\" instead.")
     window = now_utc() - timedelta(minutes=RESET_CODE_MINUTES)
     recent = await db.password_resets.count_documents({"email": email, "created_at": {"$gte": window}})
     if recent >= 3:

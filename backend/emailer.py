@@ -109,7 +109,9 @@ async def send_email(*, to: str, subject: str, html: str) -> str | None:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(f"{EMAIL_BASE_URL}/api/v1/email/send", headers={"X-Email-Key": key}, json=payload)
         resp.raise_for_status()
-        return resp.json().get("id")
+        message_id = resp.json().get("id")
+        logger.info("email accepted provider_id=%s subject=%r", message_id, subject)
+        return message_id
     except httpx.HTTPStatusError as e:
         logger.error("email send failed status=%s body=%s", e.response.status_code, e.response.text[:300])
         if e.response.status_code == 422:

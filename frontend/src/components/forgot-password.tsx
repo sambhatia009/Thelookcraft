@@ -55,7 +55,7 @@ export function ForgotPassword({ initialEmail, inputStyle, onBack }: Props) {
       <Text style={styles.hint}>
         {step === "request"
           ? "We'll email you a 6-digit code to choose a new password."
-          : `Code sent to ${email.trim()}. It expires in 15 minutes.`}
+          : `Code sent to ${email.trim()} from TheLookCraft. It expires in 15 minutes — if it isn't in your inbox within a minute, check Spam or Promotions.`}
       </Text>
       <TextInput
         testID="forgot-email-input"
