@@ -15,6 +15,7 @@ import bcrypt
 import httpx
 import requests
 from fastapi import FastAPI, APIRouter, HTTPException, Header, UploadFile, File, Query, Request
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -1137,6 +1138,9 @@ account_router, _ = build_account_router(db, now_utc, hash_pw, verify_pw, get_cu
 api_router.include_router(account_router)
 api_router.include_router(build_site_router(DELETE_REQUEST_FORM))
 app.include_router(api_router)
+# Preview of the static site that is published to thelookcraft.com via GitHub Pages (built by build_site.py into /app/docs).
+if (ROOT_DIR.parent / "docs").is_dir():
+    app.mount("/api/site-static", StaticFiles(directory=str(ROOT_DIR.parent / "docs"), html=True), name="site-static")
 
 app.add_middleware(
     CORSMiddleware,
