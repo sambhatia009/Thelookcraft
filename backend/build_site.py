@@ -15,6 +15,9 @@ OUT = Path(__file__).resolve().parent.parent / "docs"
 
 LINKS = {
     '"/api/site/privacy"': '"privacy.html"',
+    '"/api/site/features"': '"features.html"',
+    '"/api/site/faq"': '"faq.html"',
+    '"/api/site/img/': '"img/',
     '"/api/site/terms"': '"terms.html"',
     '"/api/site/support"': '"support.html"',
     '"/api/site/delete-account"': '"delete-account.html"',
@@ -95,6 +98,8 @@ def main():
     OUT.mkdir(exist_ok=True)
     pages = {
         "index.html": html(f"{APP} — Your closet, styled by AI", website.LANDING, active="", wide=True),
+        "features.html": html("Features", website.FEATURES, active="features", wide=True),
+        "faq.html": html("FAQ", website.FAQ, active="faq"),
         "privacy.html": html("Privacy Policy", website.PRIVACY, active="privacy"),
         "terms.html": html("Terms of Service", website.TERMS, active="terms"),
         "support.html": html("Support", website.SUPPORT, active="support", wide=True),
@@ -104,19 +109,22 @@ def main():
     for name, content in pages.items():
         (OUT / name).write_text(content)
     # Clean URLs on GitHub Pages: /privacy → privacy/index.html
-    for slug in ("privacy", "terms", "support", "delete-account"):
+    for slug in ("features", "faq", "privacy", "terms", "support", "delete-account"):
         d = OUT / slug
         d.mkdir(exist_ok=True)
         (d / "index.html").write_text(pages[f"{slug}.html"].replace('href="', 'href="../').replace('src="', 'src="../')
                                       .replace('href="../mailto:', 'href="mailto:').replace('href="../http', 'href="http')
                                       .replace('href="../#', 'href="#'))
     shutil.copy(website.STATIC / "icon-256.png", OUT / "icon.png")
+    (OUT / "img").mkdir(exist_ok=True)
+    for shot in (website.STATIC / "img").glob("*.jpg"):
+        shutil.copy(shot, OUT / "img" / shot.name)
     (OUT / "CNAME").write_text(f"{DOMAIN}\n")
     (OUT / ".nojekyll").write_text("")
     (OUT / "robots.txt").write_text(f"User-agent: *\nAllow: /\nSitemap: https://{DOMAIN}/sitemap.xml\n")
     (OUT / "sitemap.xml").write_text(
         '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-        + "".join(f"<url><loc>https://{DOMAIN}/{p}</loc></url>" for p in ("", "privacy", "terms", "support", "delete-account"))
+        + "".join(f"<url><loc>https://{DOMAIN}/{p}</loc></url>" for p in ("", "features", "faq", "privacy", "terms", "support", "delete-account"))
         + "</urlset>\n")
     config = OUT / "config.js"
     if not config.exists():

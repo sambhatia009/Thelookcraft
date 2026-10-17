@@ -1,0 +1,95 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Features · TheLookCraft</title><meta name="description" content="TheLookCraft — your closet, styled by AI. Snap your clothes, get outfits built from what you own.">
+<link rel="icon" href="icon.png"><link rel="apple-touch-icon" href="icon.png">
+<meta property="og:title" content="Features · TheLookCraft"><meta property="og:description" content="TheLookCraft — your closet, styled by AI. Snap your clothes, get outfits built from what you own.">
+<meta property="og:image" content="icon.png">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#000;color:#fff;font-family:Helvetica Neue,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.5}
+  a{color:#fff}
+  header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 24px;border-bottom:1px solid #222;max-width:1100px;margin:0 auto;flex-wrap:wrap}
+  .logo{display:flex;align-items:center;gap:12px;text-decoration:none}
+  .logo img{width:36px;height:36px;border:1px solid #333}
+  .logo span{font-size:13px;letter-spacing:3px;font-weight:700}
+  nav{display:flex;gap:4px 18px;flex-wrap:wrap}
+  nav a{font-size:11px;letter-spacing:2px;text-decoration:none;color:#aaa;padding:6px 0}
+  nav a.on,nav a:hover{color:#fff;border-bottom:1px solid #fff}
+  main{max-width:1100px;margin:0 auto;padding:48px 24px 80px}
+  h1{font-size:clamp(32px,6vw,56px);font-weight:900;letter-spacing:-.5px;line-height:1.05;margin:0 0 20px}
+  h2{font-size:13px;letter-spacing:3px;font-weight:700;margin:40px 0 12px;color:#fff}
+  h3{font-size:18px;font-weight:800;margin:0 0 8px}
+  p,li{font-size:16px;color:#cfcfcf} .lead{font-size:19px;color:#fff} .fine{font-size:13px;color:#888}
+  .kicker{font-size:12px;letter-spacing:3px;color:#888;margin-bottom:16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1px;background:#222;border:1px solid #222;margin-top:24px}
+  .cell{background:#000;padding:28px 24px} .cell .n{font-size:12px;letter-spacing:2px;color:#888;margin-bottom:12px}
+  .hero{display:grid;grid-template-columns:1.2fr .8fr;gap:48px;align-items:center;padding:40px 0 56px;border-bottom:1px solid #222}
+  .hero .mark{width:100%;max-width:360px;justify-self:center;border:1px solid #333}
+  .hero > *{min-width:0} body{overflow-x:hidden}
+  @media (max-width:760px){.hero{grid-template-columns:1fr;gap:32px}.hero .mark{max-width:220px}.hero .phone{width:140px}.hero .phone.lg{width:170px}}
+  .badges{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
+  .badge{display:inline-flex;flex-direction:column;border:1px solid #fff;padding:10px 18px;min-width:170px;text-decoration:none;opacity:.9}
+  .badge small{font-size:10px;letter-spacing:2px;color:#aaa} .badge b{font-size:16px}
+  .badge.soon{border-color:#444;color:#aaa;cursor:default} .badge.soon b{color:#ddd}
+  .cta{display:inline-block;background:#fff;color:#000;text-decoration:none;font-weight:700;letter-spacing:2px;font-size:13px;padding:16px 24px;margin-top:8px}
+  label{display:block;font-size:12px;letter-spacing:2px;margin:20px 0 8px}
+  input[type=email],input[type=text],input:not([type]),textarea{width:100%;background:#000;color:#fff;border:1px solid #fff;padding:14px;font-size:16px;font-family:inherit}
+  input#code{width:100%;background:#000;color:#fff;border:1px solid #fff;padding:14px;font-size:22px;letter-spacing:8px}
+  .opt{display:flex;gap:12px;align-items:flex-start;border:1px solid #333;padding:14px;margin:8px 0;letter-spacing:0;font-size:15px;cursor:pointer}
+  .opt small{color:#aaa} .opt input{margin-top:4px}
+  button{width:100%;margin-top:24px;background:#fff;color:#000;border:0;padding:16px;font-size:14px;font-weight:700;letter-spacing:2px;cursor:pointer}
+  .phones{display:flex;gap:16px;justify-content:center;align-items:flex-end;flex-wrap:nowrap}
+  .hero .phone{width:170px} .hero .phone.lg{width:210px}
+  .phone{width:220px;border:6px solid #1a1a1a;border-radius:34px;overflow:hidden;background:#000;box-shadow:0 30px 60px rgba(0,0,0,.6)}
+  .phone img{display:block;width:100%;height:auto}
+  .phone.lg{width:260px}
+  .caption{text-align:center;font-size:11px;letter-spacing:2px;color:#888;margin-top:12px}
+  .feature{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center;padding:48px 0;border-bottom:1px solid #222}
+  .feature:nth-child(even) .phone-wrap{order:-1}
+  .feature .phone-wrap{display:flex;justify-content:center}
+  @media (max-width:760px){.feature{grid-template-columns:1fr}.feature:nth-child(even) .phone-wrap{order:0}}
+  details{border-top:1px solid #222;padding:18px 0} details:last-of-type{border-bottom:1px solid #222}
+  summary{cursor:pointer;font-size:17px;font-weight:700;list-style:none;display:flex;justify-content:space-between;gap:16px}
+  summary::after{content:"+";color:#888} details[open] summary::after{content:"–"}
+  details p{margin:12px 0 0}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;background:#222;border:1px solid #222;margin:40px 0}
+  .stat{background:#000;padding:24px;text-align:center} .stat b{display:block;font-size:34px;font-weight:900} .stat span{font-size:11px;letter-spacing:2px;color:#888}
+  footer{border-top:1px solid #222;max-width:1100px;margin:0 auto;padding:28px 24px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12px;color:#777}
+  footer a{color:#aaa;text-decoration:none;margin-right:16px;letter-spacing:1px}
+</style></head><body>
+<header><a class="logo" href="index.html"><img src="icon.png" alt="TheLookCraft"><span>THELOOKCRAFT</span></a><nav><a href="index.html" class="">HOME</a><a href="features.html" class="on">FEATURES</a><a href="faq.html" class="">FAQ</a><a href="support.html" class="">SUPPORT</a><a href="privacy.html" class="">PRIVACY</a><a href="terms.html" class="">TERMS</a></nav></header>
+<main>
+<div class="kicker">EVERYTHING INSIDE THELOOKCRAFT</div>
+<h1>Features</h1>
+<p class="lead">A stylist that knows your closet, not a shop that wants to sell you another one.</p>
+
+<section class="feature">
+  <div><h3>Snap &amp; auto-tag your closet</h3><p>Shoot a piece with the camera or pick from your gallery — one at a time or ten at once. In a few seconds AI names it, assigns category, colour, material and style, and removes the background for clean editorial cutouts. Edit anything before saving; add notes like “runs small”.</p></div>
+  <div class="phone-wrap"><div class="phone"><img src="img/shot-login.jpg" alt="TheLookCraft sign-in screen"></div></div>
+</section>
+<section class="feature">
+  <div><h3>An AI stylist that only uses what you own</h3><p>Describe the moment in plain words — “client lunch, 14°C, drizzle”, “date night in autumn”, “casual weekend”. The stylist composes complete looks from your pieces, explains the why, and lets you swap, remove or add a piece, or style around a favourite item.</p></div>
+  <div class="phone-wrap"><div class="phone"><img src="img/shot-stylist.jpg" alt="Stylist chat"></div></div>
+</section>
+<section class="feature">
+  <div><h3>Visualise on you</h3><p>Add one full-body photo in Profile and any look — from the stylist or your Lookbook — can be rendered on you. Save the render with the look and include it in your share card.</p></div>
+  <div class="phone-wrap"><div class="phone"><img src="img/shot-lookbook.jpg" alt="Lookbook with visualised outfit"></div></div>
+</section>
+<section class="feature">
+  <div><h3>Lookbook, wear log &amp; sharing</h3><p>Save looks with occasion tags (Office, Date, Weekend or your own), mark “wore it today”, and export a black-and-white editorial share card to Photos or any app.</p></div>
+  <div class="phone-wrap"><img class="mark" src="icon.png" alt="TheLookCraft mark" style="max-width:220px;border:1px solid #333"></div>
+</section>
+
+<h2>AND MORE</h2>
+<div class="grid">
+  <div class="cell"><h3>Weather sync</h3><p>Optional, one tap: looks adapt to today's forecast where you are. Location is never stored.</p></div>
+  <div class="cell"><h3>Learns your taste</h3><p>Thumbs-up or down any look, mark pieces “don't suggest in looks”, and suggestions stop repeating.</p></div>
+  <div class="cell"><h3>Never-worn nudges</h3><p>The stylist surfaces pieces you haven't touched and builds looks that finally use them.</p></div>
+  <div class="cell"><h3>Wardrobe insights</h3><p>Most-worn pieces, colour balance, category gaps — and shop-the-gap suggestions when one piece would unlock many looks.</p></div>
+  <div class="cell"><h3>Fast, reliable uploads</h3><p>Photos are compressed on your phone, acknowledged in a second and processed in the background — retry never duplicates an item.</p></div>
+  <div class="cell"><h3>Private by design</h3><p>Email or Google sign-in, photos served only to you, disable or delete your account whenever you like.</p></div>
+</div>
+<p style="margin-top:28px"><a class="cta" href="index.html">BACK TO HOME</a></p>
+</main>
+<footer><div>© TheLookCraft · thelookcraft.com</div><div><a href="features.html">Features</a><a href="faq.html">FAQ</a><a href="support.html">Support</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="delete-account.html">Delete account</a></div></footer>
+</body></html>

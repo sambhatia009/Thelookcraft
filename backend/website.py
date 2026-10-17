@@ -3,7 +3,7 @@ Landing, Privacy Policy, Terms, Support and the account-deletion entry point sha
 from html import escape
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 APP = "TheLookCraft"
@@ -12,7 +12,7 @@ SUPPORT_EMAIL = f"support@{DOMAIN}"
 EFFECTIVE = "1 June 2026"
 STATIC = Path(__file__).with_name("static")
 
-NAV = [("", "HOME"), ("privacy", "PRIVACY"), ("terms", "TERMS"), ("support", "SUPPORT"), ("delete-account", "DELETE ACCOUNT")]
+NAV = [("", "HOME"), ("features", "FEATURES"), ("faq", "FAQ"), ("support", "SUPPORT"), ("privacy", "PRIVACY"), ("terms", "TERMS")]
 
 
 def render(title: str, body: str, *, active: str = "", description: str = "", status: int = 200, wide: bool = False) -> HTMLResponse:
@@ -47,7 +47,8 @@ def render(title: str, body: str, *, active: str = "", description: str = "", st
   .cell{{background:#000;padding:28px 24px}} .cell .n{{font-size:12px;letter-spacing:2px;color:#888;margin-bottom:12px}}
   .hero{{display:grid;grid-template-columns:1.2fr .8fr;gap:48px;align-items:center;padding:40px 0 56px;border-bottom:1px solid #222}}
   .hero .mark{{width:100%;max-width:360px;justify-self:center;border:1px solid #333}}
-  @media (max-width:760px){{.hero{{grid-template-columns:1fr}}.hero .mark{{max-width:220px}}}}
+  .hero > *{{min-width:0}} body{{overflow-x:hidden}}
+  @media (max-width:760px){{.hero{{grid-template-columns:1fr;gap:32px}}.hero .mark{{max-width:220px}}.hero .phone{{width:140px}}.hero .phone.lg{{width:170px}}}}
   .badges{{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}}
   .badge{{display:inline-flex;flex-direction:column;border:1px solid #fff;padding:10px 18px;min-width:170px;text-decoration:none;opacity:.9}}
   .badge small{{font-size:10px;letter-spacing:2px;color:#aaa}} .badge b{{font-size:16px}}
@@ -59,12 +60,28 @@ def render(title: str, body: str, *, active: str = "", description: str = "", st
   .opt{{display:flex;gap:12px;align-items:flex-start;border:1px solid #333;padding:14px;margin:8px 0;letter-spacing:0;font-size:15px;cursor:pointer}}
   .opt small{{color:#aaa}} .opt input{{margin-top:4px}}
   button{{width:100%;margin-top:24px;background:#fff;color:#000;border:0;padding:16px;font-size:14px;font-weight:700;letter-spacing:2px;cursor:pointer}}
+  .phones{{display:flex;gap:16px;justify-content:center;align-items:flex-end;flex-wrap:nowrap}}
+  .hero .phone{{width:170px}} .hero .phone.lg{{width:210px}}
+  .phone{{width:220px;border:6px solid #1a1a1a;border-radius:34px;overflow:hidden;background:#000;box-shadow:0 30px 60px rgba(0,0,0,.6)}}
+  .phone img{{display:block;width:100%;height:auto}}
+  .phone.lg{{width:260px}}
+  .caption{{text-align:center;font-size:11px;letter-spacing:2px;color:#888;margin-top:12px}}
+  .feature{{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center;padding:48px 0;border-bottom:1px solid #222}}
+  .feature:nth-child(even) .phone-wrap{{order:-1}}
+  .feature .phone-wrap{{display:flex;justify-content:center}}
+  @media (max-width:760px){{.feature{{grid-template-columns:1fr}}.feature:nth-child(even) .phone-wrap{{order:0}}}}
+  details{{border-top:1px solid #222;padding:18px 0}} details:last-of-type{{border-bottom:1px solid #222}}
+  summary{{cursor:pointer;font-size:17px;font-weight:700;list-style:none;display:flex;justify-content:space-between;gap:16px}}
+  summary::after{{content:"+";color:#888}} details[open] summary::after{{content:"–"}}
+  details p{{margin:12px 0 0}}
+  .stats{{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;background:#222;border:1px solid #222;margin:40px 0}}
+  .stat{{background:#000;padding:24px;text-align:center}} .stat b{{display:block;font-size:34px;font-weight:900}} .stat span{{font-size:11px;letter-spacing:2px;color:#888}}
   footer{{border-top:1px solid #222;max-width:1100px;margin:0 auto;padding:28px 24px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12px;color:#777}}
   footer a{{color:#aaa;text-decoration:none;margin-right:16px;letter-spacing:1px}}
 </style></head><body>
 <header><a class="logo" href="/api/site/"><img src="/api/site/icon.png" alt="{APP}"><span>THELOOKCRAFT</span></a><nav>{nav}</nav></header>
 <main>{body}</main>
-<footer><div>© {APP} · {DOMAIN}</div><div><a href="/api/site/privacy">Privacy</a><a href="/api/site/terms">Terms</a><a href="/api/site/support">Support</a><a href="/api/site/delete-account">Delete account</a></div></footer>
+<footer><div>© {APP} · {DOMAIN}</div><div><a href="/api/site/features">Features</a><a href="/api/site/faq">FAQ</a><a href="/api/site/support">Support</a><a href="/api/site/privacy">Privacy</a><a href="/api/site/terms">Terms</a><a href="/api/site/delete-account">Delete account</a></div></footer>
 </body></html>"""
     return HTMLResponse(html, status_code=status)
 
@@ -80,9 +97,20 @@ LANDING = f"""
       <span class="badge soon"><small>COMING SOON ON THE</small><b>App Store</b></span>
       <span class="badge soon"><small>COMING SOON ON</small><b>Google Play</b></span>
     </div>
+    <p class="fine" style="margin-top:20px">Free to start · No ads · Your photos stay private</p>
   </div>
-  <img class="mark" src="/api/site/icon.png" alt="{APP} mark">
+  <div class="phones">
+    <div class="phone"><img src="/api/site/img/shot-stylist.jpg" alt="{APP} stylist screen"></div>
+    <div class="phone lg"><img src="/api/site/img/shot-lookbook.jpg" alt="{APP} lookbook with a look visualised on you"></div>
+  </div>
 </section>
+
+<div class="stats">
+  <div class="stat"><b>5</b><span>PIECES TO START</span></div>
+  <div class="stat"><b>~5s</b><span>PER PHOTO, TAGGED &amp; CUT OUT</span></div>
+  <div class="stat"><b>100%</b><span>LOOKS FROM CLOTHES YOU OWN</span></div>
+  <div class="stat"><b>0</b><span>ADS OR DATA SELLING</span></div>
+</div>
 
 <h2>WHAT IT DOES</h2>
 <div class="grid">
@@ -93,6 +121,7 @@ LANDING = f"""
   <div class="cell"><div class="n">05</div><h3>Weather-aware</h3><p>Optional weather sync so layers and fabrics match the forecast.</p></div>
   <div class="cell"><div class="n">06</div><h3>Wear less, better</h3><p>Insights show what you actually wear, what you never touch and where a single piece would unlock more looks.</p></div>
 </div>
+<p style="margin-top:20px"><a class="cta" href="/api/site/features">EXPLORE ALL FEATURES →</a></p>
 
 <h2>HOW IT WORKS</h2>
 <div class="grid">
@@ -104,6 +133,56 @@ LANDING = f"""
 <h2>YOUR DATA, YOUR CALL</h2>
 <p>Photos stay private to your account. Delete any piece, your personal photo, or your whole account at any time — in the app or
 <a href="/api/site/delete-account">right here</a>. Read the <a href="/api/site/privacy">Privacy Policy</a>.</p>
+"""
+
+FEATURES = f"""
+<div class="kicker">EVERYTHING INSIDE {APP.upper()}</div>
+<h1>Features</h1>
+<p class="lead">A stylist that knows your closet, not a shop that wants to sell you another one.</p>
+
+<section class="feature">
+  <div><h3>Snap &amp; auto-tag your closet</h3><p>Shoot a piece with the camera or pick from your gallery — one at a time or ten at once. In a few seconds AI names it, assigns category, colour, material and style, and removes the background for clean editorial cutouts. Edit anything before saving; add notes like “runs small”.</p></div>
+  <div class="phone-wrap"><div class="phone"><img src="/api/site/img/shot-login.jpg" alt="{APP} sign-in screen"></div></div>
+</section>
+<section class="feature">
+  <div><h3>An AI stylist that only uses what you own</h3><p>Describe the moment in plain words — “client lunch, 14°C, drizzle”, “date night in autumn”, “casual weekend”. The stylist composes complete looks from your pieces, explains the why, and lets you swap, remove or add a piece, or style around a favourite item.</p></div>
+  <div class="phone-wrap"><div class="phone"><img src="/api/site/img/shot-stylist.jpg" alt="Stylist chat"></div></div>
+</section>
+<section class="feature">
+  <div><h3>Visualise on you</h3><p>Add one full-body photo in Profile and any look — from the stylist or your Lookbook — can be rendered on you. Save the render with the look and include it in your share card.</p></div>
+  <div class="phone-wrap"><div class="phone"><img src="/api/site/img/shot-lookbook.jpg" alt="Lookbook with visualised outfit"></div></div>
+</section>
+<section class="feature">
+  <div><h3>Lookbook, wear log &amp; sharing</h3><p>Save looks with occasion tags (Office, Date, Weekend or your own), mark “wore it today”, and export a black-and-white editorial share card to Photos or any app.</p></div>
+  <div class="phone-wrap"><img class="mark" src="/api/site/icon.png" alt="{APP} mark" style="max-width:220px;border:1px solid #333"></div>
+</section>
+
+<h2>AND MORE</h2>
+<div class="grid">
+  <div class="cell"><h3>Weather sync</h3><p>Optional, one tap: looks adapt to today's forecast where you are. Location is never stored.</p></div>
+  <div class="cell"><h3>Learns your taste</h3><p>Thumbs-up or down any look, mark pieces “don't suggest in looks”, and suggestions stop repeating.</p></div>
+  <div class="cell"><h3>Never-worn nudges</h3><p>The stylist surfaces pieces you haven't touched and builds looks that finally use them.</p></div>
+  <div class="cell"><h3>Wardrobe insights</h3><p>Most-worn pieces, colour balance, category gaps — and shop-the-gap suggestions when one piece would unlock many looks.</p></div>
+  <div class="cell"><h3>Fast, reliable uploads</h3><p>Photos are compressed on your phone, acknowledged in a second and processed in the background — retry never duplicates an item.</p></div>
+  <div class="cell"><h3>Private by design</h3><p>Email or Google sign-in, photos served only to you, disable or delete your account whenever you like.</p></div>
+</div>
+<p style="margin-top:28px"><a class="cta" href="/api/site/">BACK TO HOME</a></p>
+"""
+
+FAQ = f"""
+<div class="kicker">QUESTIONS</div>
+<h1>FAQ</h1>
+<details open><summary>Is {APP} free?</summary><p>Yes — getting started is free, and there are no ads. If we add premium features later they will be clearly optional.</p></details>
+<details><summary>Which phones does it support?</summary><p>iPhone (iOS 16+) and Android (Android 8+). Store listings are coming soon; the website will link to them the day they go live.</p></details>
+<details><summary>How many clothes do I need to add?</summary><p>Five pieces — a top, bottoms, shoes, a layer and an accessory — are enough for the stylist to start building real outfits. More pieces means more variety.</p></details>
+<details><summary>How should I photograph my clothes?</summary><p>One piece at a time, laid flat or on a hanger, on a plain background with even light. The app compresses the photo on your phone and removes the background for you.</p></details>
+<details><summary>Does the stylist suggest things I don't own?</summary><p>No. Every look is composed only from pieces in your closet. The optional “shop the gap” insight shows where one new piece would unlock many more looks — nothing more.</p></details>
+<details><summary>How does “Visualise on me” work?</summary><p>You add one full-body photo in Profile. When you ask, AI renders a chosen look on that photo. The render is an approximation for deciding, not a product photo; you can save it with the look or discard it.</p></details>
+<details><summary>Who can see my photos?</summary><p>Only you. Photos are stored in private storage and served solely to your signed-in account. Looks you share are shared by you, through your phone's share sheet.</p></details>
+<details><summary>Are my photos used to train AI?</summary><p>No. Photos are sent to AI processors only to deliver the feature you requested (tagging, styling, rendering) and are not used to train our models.</p></details>
+<details><summary>Can I delete my data?</summary><p>Yes — any piece, your personal photo, or your whole account, instantly, from Profile → Privacy &amp; Data. You can also <a href="/api/site/delete-account">request deletion here</a> without the app, or disable your account and come back later.</p></details>
+<details><summary>I didn't get the password-reset email.</summary><p>Check Spam or Promotions — new senders often land there. The email comes from “{APP}” with a 6-digit code valid for 15 minutes.</p></details>
+<p style="margin-top:28px">Still stuck? <a href="/api/site/support">Contact support</a>.</p>
 """
 
 PRIVACY = f"""
@@ -200,6 +279,21 @@ def build_router(delete_request_form: str) -> APIRouter:
     @router.get("/terms", response_class=HTMLResponse, include_in_schema=False)
     async def terms():
         return render("Terms of Service", TERMS, active="terms", description=f"Terms for using the {APP} app and website.")
+
+    @router.get("/features", response_class=HTMLResponse, include_in_schema=False)
+    async def features():
+        return render("Features", FEATURES, active="features", description=f"Everything inside {APP}: AI tagging, outfit generation, visualise on you, lookbook and more.", wide=True)
+
+    @router.get("/faq", response_class=HTMLResponse, include_in_schema=False)
+    async def faq():
+        return render("FAQ", FAQ, active="faq", description=f"Answers to common questions about {APP}.")
+
+    @router.get("/img/{name}", include_in_schema=False)
+    async def image(name: str):
+        path = STATIC / "img" / Path(name).name
+        if path.suffix != ".jpg" or not path.is_file():
+            raise HTTPException(status_code=404, detail="Not found")
+        return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
 
     @router.get("/support", response_class=HTMLResponse, include_in_schema=False)
     async def support():
