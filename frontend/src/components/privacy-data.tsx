@@ -1,15 +1,21 @@
 import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
-import { Modal, Pressable, Text, View } from "react-native";
+import { Linking, Modal, Platform, Pressable, Text, View } from "react-native";
 
-import { api, ApiError, BACKEND } from "@/src/api";
+import { ApiError } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useToast } from "@/src/toast";
 import { fontSize, makeStyles, spacing } from "@/src/theme";
 import { Button } from "@/src/ui";
 
-export const PRIVACY_URL = `${BACKEND}/api/site/privacy`;
-export const DELETE_REQUEST_URL = `${BACKEND}/api/site/delete-account`;
+// Public site lives on the brand domain (GitHub Pages) — always reachable, independent of the backend host.
+export const PRIVACY_URL = "https://thelookcraft.com/privacy";
+export const DELETE_REQUEST_URL = "https://thelookcraft.com/delete-account";
+
+function openLink(url: string) {
+  if (Platform.OS === "web") return Linking.openURL(url);
+  return WebBrowser.openBrowserAsync(url);
+}
 
 type Mode = "disable" | "delete";
 
@@ -35,7 +41,7 @@ export function PrivacyAndData() {
 
   return (
     <View style={styles.wrap} testID="privacy-section">
-      <Pressable onPress={() => WebBrowser.openBrowserAsync(PRIVACY_URL)} style={styles.link} testID="privacy-policy-link">
+      <Pressable onPress={() => openLink(PRIVACY_URL)} style={styles.link} testID="privacy-policy-link">
         <Text style={styles.linkText}>PRIVACY POLICY</Text>
         <Text style={styles.arrow}>→</Text>
       </Pressable>
@@ -53,9 +59,11 @@ export function PrivacyAndData() {
         </View>
         <Text style={[styles.arrow, styles.danger]}>→</Text>
       </Pressable>
-      <Text style={styles.fine}>
-        You can also request deletion without the app at {DELETE_REQUEST_URL.replace(/^https?:\/\//, "")}
-      </Text>
+      <Pressable onPress={() => openLink(DELETE_REQUEST_URL)} testID="delete-request-link" style={{ minHeight: 44, justifyContent: "center" }}>
+        <Text style={styles.fine}>
+          You can also request deletion without the app at {DELETE_REQUEST_URL.replace(/^https?:\/\//, "")}
+        </Text>
+      </Pressable>
 
       <Modal visible={mode !== null} transparent animationType="fade" onRequestClose={() => !busy && setMode(null)}>
         <Pressable style={styles.backdrop} onPress={() => !busy && setMode(null)}>
