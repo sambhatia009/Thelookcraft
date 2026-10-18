@@ -122,10 +122,14 @@ def main():
     (OUT / "CNAME").write_text(f"{DOMAIN}\n")
     (OUT / ".nojekyll").write_text("")
     (OUT / "robots.txt").write_text(f"User-agent: *\nAllow: /\nSitemap: https://{DOMAIN}/sitemap.xml\n")
+    today = __import__("datetime").date.today().isoformat()
+    entries = [("", "weekly", "1.0"), ("features", "monthly", "0.8"), ("faq", "monthly", "0.7"), ("support", "monthly", "0.5"),
+               ("privacy", "yearly", "0.3"), ("terms", "yearly", "0.3"), ("delete-account", "yearly", "0.3")]
+    urls = "".join(
+        f"  <url>\n    <loc>https://{DOMAIN}/{slug}</loc>\n    <lastmod>{today}</lastmod>\n"
+        f"    <changefreq>{freq}</changefreq>\n    <priority>{prio}</priority>\n  </url>\n" for slug, freq, prio in entries)
     (OUT / "sitemap.xml").write_text(
-        '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-        + "".join(f"<url><loc>https://{DOMAIN}/{p}</loc></url>" for p in ("", "features", "faq", "privacy", "terms", "support", "delete-account"))
-        + "</urlset>\n")
+        '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + urls + "</urlset>\n")
     config = OUT / "config.js"
     if not config.exists():
         config.write_text('// Set to your DEPLOYED backend origin (no trailing slash) to enable the self-service code flow,\n'
