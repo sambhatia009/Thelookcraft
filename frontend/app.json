@@ -80,7 +80,8 @@
           "isAccessMediaLocationEnabled": false,
           "granularPermissions": []
         }
-      ]
+      ],
+      "./plugins/withAppName.js"
     ],
     "experiments": {
       "typedRoutes": true

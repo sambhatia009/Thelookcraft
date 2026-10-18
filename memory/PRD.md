@@ -136,6 +136,9 @@ Build "StyleVault", a mobile-first AI Personal Stylist & Virtual Wardrobe app. U
 ### Play policy: Android Photo Picker instead of READ_MEDIA_* (Play Console flag)
 - `app.json`: removed `READ_MEDIA_IMAGES` from android.permissions; added `android.blockedPermissions` for READ_MEDIA_IMAGES/VIDEO/AUDIO, READ_MEDIA_VISUAL_USER_SELECTED, ACCESS_MEDIA_LOCATION, READ_EXTERNAL_STORAGE (WRITE_EXTERNAL_STORAGE kept, maxSdk 32, needed to save share cards on Android ≤ 9; strips library-declared ones via tools:node=remove); expo-media-library plugin `granularPermissions: []`. expo-image-picker already uses `PickVisualMedia` on Android; add-item + about-you skip `requestMediaLibraryPermissionsAsync` on Android. Saving share cards uses write-only MediaStore (no read permission). Verified with `expo config --type prebuild`. Requires a new Android build.
 
+### Launcher name pinned (APK showed "StyleVault")
+- The Emergent build wrote `app_name=StyleVault` into strings.xml even though expo.name is TheLookCraft (pipeline sets its own name). Added local config plugin `frontend/plugins/withAppName.js` (registered in app.json) that forces Android `app_name` and iOS `CFBundleDisplayName`/`CFBundleName` to "TheLookCraft". Verified with a scratch `expo prebuild`: strings.xml app_name=TheLookCraft; manifest has no READ_MEDIA_*; version bumped to 1.0.1. Requires Deploy + new build.
+
 ### Store identifiers
 - Android `package` and iOS `bundleIdentifier` set to `com.thelookcraft.app` (reverse of thelookcraft.com) for Play Console / App Store Connect. Scheme and storage prefixes unchanged.
 
